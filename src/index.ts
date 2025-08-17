@@ -79,9 +79,9 @@ async function getCurentPR() {
 /**
  * 获取指定分支的最新 git tag 版本
  * @param branchSuffix 分支后缀，如 'alpha', 'beta', 或空字符串表示正式版本
- * @returns 最新的 tag 版本号
+ * @returns 最新的 tag 版本号，如果没有找到则返回 null
  */
-async function getLatestTagVersion(branchSuffix: string = ''): Promise<string> {
+async function getLatestTagVersion(branchSuffix: string = ''): Promise<string | null> {
   try {
     let stdout = '';
     const pattern = branchSuffix ? `*-${branchSuffix}.*` : '*';
@@ -97,10 +97,8 @@ async function getLatestTagVersion(branchSuffix: string = ''): Promise<string> {
     const tags = stdout.trim().split('\n').filter(tag => tag.trim().length > 0);
     
     if (tags.length === 0) {
-      // 没有找到对应的 tag，返回默认版本
-      const defaultVersion = branchSuffix ? `0.0.0-${branchSuffix}.0` : '0.0.0';
-      logger.info(`未找到 ${branchSuffix || 'main'} 分支的 tag，使用默认版本: ${defaultVersion}`);
-      return defaultVersion;
+      logger.info(`未找到 ${branchSuffix || 'main'} 分支的 tag`);
+      return null;
     }
     
     const latestTag = tags[0];
@@ -108,8 +106,7 @@ async function getLatestTagVersion(branchSuffix: string = ''): Promise<string> {
     return latestTag;
   } catch (error) {
     logger.warning(`获取 ${branchSuffix || 'main'} tag 失败: ${error}`);
-    const defaultVersion = branchSuffix ? `0.0.0-${branchSuffix}.0` : '0.0.0';
-    return defaultVersion;
+    return null;
   }
 }
 
@@ -241,22 +238,25 @@ async function run() {
     await signUser();
     const pkgPath = await resolvePackageJSON();
 
+    // 读取当前分支 package.json 版本（用于后备）
+    const pkgInfo = await readPackageJSON(pkgPath);
+    
     // 获取各分支的最新 tag 版本（以 tag 为准）
     const currentTagVersion = await getLatestTagVersion(
       targetBranch === 'main' ? '' : targetBranch
     );
     const betaTagVersion = await getLatestTagVersion('beta');
     
-    logger.info(`当前 ${targetBranch} tag 版本: ${currentTagVersion}`);
-    logger.info(`beta tag 版本: ${betaTagVersion}`);
-
-    // 读取当前分支 package.json 版本（用于同步检查）
-    const pkgInfo = await readPackageJSON(pkgPath);
-    const currentPkgVersion = pkgInfo.version!;
-    logger.info(`当前 package.json 版本: ${currentPkgVersion}`);
+    // 确定当前版本和 beta 版本（使用 package.json 作为后备）
+    const currentVersion = currentTagVersion || pkgInfo.version || '0.0.0';
+    const betaVersion = betaTagVersion || '0.0.0-beta.0';
+    
+    logger.info(`当前 ${targetBranch} tag 版本: ${currentTagVersion || '无'}`);
+    logger.info(`当前使用版本: ${currentVersion}`);
+    logger.info(`beta tag 版本: ${betaTagVersion || '无'}`);
 
     // 根据 PR 标签确定版本升级类型
-    const releaseType = getReleaseTypeFromLabel(pr.labels, betaTagVersion, currentTagVersion);
+    const releaseType = getReleaseTypeFromLabel(pr.labels, betaVersion, currentVersion);
     logger.info(`版本升级类型: ${releaseType}`);
 
     if (!releaseType) {
@@ -269,32 +269,42 @@ async function run() {
 
     if (targetBranch === 'alpha') {
       // Alpha 分支：基于封版重新计数规则计算版本
-      const lastSemver = semver.parse(currentTagVersion);
       
-      if (lastSemver && (!lastSemver.prerelease || lastSemver.prerelease[0] !== 'alpha')) {
-        // 情况1: 版本来自 beta 或 main 分支
-        logger.info(`上一个版本 (${currentTagVersion}) 来自 beta 或 main, 需要提升版本。`);
-        newVersion = semver.inc(currentTagVersion, releaseType, 'alpha');
+      if (!currentTagVersion) {
+        // 情况1: 没有 alpha tag，这是第一个 alpha 版本
+        logger.info(`没有找到 alpha tag，基于当前版本 (${currentVersion}) 创建第一个 alpha 版本`);
+        newVersion = semver.inc(currentVersion, releaseType, 'alpha');
       } else {
-        // 情况2: 已经是 alpha 版本，检查是否封版
-        const isSealed = await isAlphaVersionSealed(currentTagVersion);
+        // 情况2: 已有 alpha tag，检查是否封版
+        const lastSemver = semver.parse(currentTagVersion);
         
-        if (isSealed) {
-          // 已封版：重新计数，基于 beta tag 版本计算新的 alpha 版本
-          logger.info(`当前 alpha 版本 (${currentTagVersion}) 已封版，重新计数。`);
-          newVersion = semver.inc(betaTagVersion, releaseType, 'alpha');
+        if (lastSemver && (!lastSemver.prerelease || lastSemver.prerelease[0] !== 'alpha')) {
+          // 版本来自 beta 或 main 分支
+          logger.info(`上一个版本 (${currentTagVersion}) 来自 beta 或 main, 需要提升版本。`);
+          newVersion = semver.inc(currentTagVersion, releaseType, 'alpha');
         } else {
-          // 未封版：继续递增预发布版本号
-          logger.info(`当前 alpha 版本 (${currentTagVersion}) 未封版，递增预发布版本号。`);
-          newVersion = semver.inc(currentTagVersion, 'prerelease', 'alpha');
+          // 已经是 alpha 版本，检查是否封版
+          const isSealed = await isAlphaVersionSealed(currentTagVersion);
+          
+          if (isSealed) {
+            // 已封版：重新计数，基于 beta tag 版本计算新的 alpha 版本
+            logger.info(`当前 alpha 版本 (${currentTagVersion}) 已封版，重新计数。`);
+            newVersion = semver.inc(betaVersion, releaseType, 'alpha');
+          } else {
+            // 未封版：继续递增预发布版本号
+            logger.info(`当前 alpha 版本 (${currentTagVersion}) 未封版，递增预发布版本号。`);
+            newVersion = semver.inc(currentTagVersion, 'prerelease', 'alpha');
+          }
         }
       }
     } else if (targetBranch === 'beta') {
       // Beta 分支：升级 beta 预发布版本
-      newVersion = semver.inc(currentTagVersion, 'prerelease', 'beta');
+      const baseVersion = betaTagVersion || currentVersion;
+      newVersion = semver.inc(baseVersion, 'prerelease', 'beta');
     } else if (targetBranch === 'main') {
       // Main 分支：去除预发布标识，转为正式版本
-      newVersion = semver.inc(currentTagVersion, 'patch');
+      const baseVersion = currentTagVersion || currentVersion;
+      newVersion = semver.inc(baseVersion, 'patch');
     }
 
     logger.info(`${isDryRun ? '预览' : '新'}版本: ${newVersion}`);
@@ -344,7 +354,8 @@ async function run() {
       await exec('git', ['fetch', 'origin', 'alpha']);
       await exec('git', ['switch', 'alpha']);
       const alphaTagVersion = await getLatestTagVersion('alpha');
-      logger.info(`alpha tag 版本 ${alphaTagVersion}`);
+      const alphaCurrentVersion = alphaTagVersion || '0.0.0-alpha.0';
+      logger.info(`alpha tag 版本 ${alphaTagVersion || '无'}`);
       logger.info(`beta tag 版本 ${newVersion}`);
       await exec('git', [
         'merge',
@@ -355,11 +366,11 @@ async function run() {
         `chore: sync beta v${newVersion} to alpha [skip ci]`,
       ]).catch(async () => {
         logger.warning('Alpha 合并冲突');
-        if (semver.gt(alphaTagVersion, newVersion!)) {
+        if (alphaTagVersion && semver.gt(alphaTagVersion, newVersion!)) {
           // Alpha 版本更高，保持 Alpha 版本不变
           logger.info('Alpha 版本号大于 beta 版本号, 忽略版本变更');
           const newAlphaPkgInfo = await readPackageJSON(pkgPath);
-          newAlphaPkgInfo.version = alphaTagVersion;
+          newAlphaPkgInfo.version = alphaCurrentVersion;
           logger.info(`alpha pkg info: ${JSON.stringify(newAlphaPkgInfo)}`);
           await writePackageJSON(pkgPath, newAlphaPkgInfo);
           await exec('git', ['add', '.']);
