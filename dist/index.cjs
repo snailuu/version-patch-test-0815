@@ -28119,13 +28119,17 @@ function getReleaseTypeFromLabel(labels = [], betaVersion, currentVersion) {
   let tempReleaseType = "";
   if (labelNames.includes("major")) {
     tempReleaseType = "premajor";
+    logger.info("\u68C0\u6D4B\u5230 major \u6807\u7B7E\uFF0C\u4F7F\u7528 premajor \u53D1\u5E03\u7C7B\u578B");
   } else if (labelNames.includes("minor")) {
     tempReleaseType = "preminor";
+    logger.info("\u68C0\u6D4B\u5230 minor \u6807\u7B7E\uFF0C\u4F7F\u7528 preminor \u53D1\u5E03\u7C7B\u578B");
   } else if (labelNames.includes("patch")) {
     tempReleaseType = "prepatch";
+    logger.info("\u68C0\u6D4B\u5230 patch \u6807\u7B7E\uFF0C\u4F7F\u7528 prepatch \u53D1\u5E03\u7C7B\u578B");
   }
-  if (tempReleaseType && import_semver.default.gt(currentVersion, betaVersion)) {
-    tempReleaseType = "prerelease";
+  const versionLabels = labelNames.filter((name) => ["major", "minor", "patch"].includes(name));
+  if (versionLabels.length > 1) {
+    logger.info(`\u68C0\u6D4B\u5230\u591A\u4E2A\u7248\u672C\u6807\u7B7E: ${versionLabels.join(", ")}\uFF0C\u4F7F\u7528\u6700\u9AD8\u4F18\u5148\u7EA7: ${tempReleaseType}`);
   }
   return tempReleaseType;
 }

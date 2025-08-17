@@ -172,20 +172,25 @@ async function isAlphaVersionSealed(alphaVersion: string): Promise<boolean> {
  */
 function getReleaseTypeFromLabel(labels: { name: string }[] = [], betaVersion: string, currentVersion: string) {
   const labelNames = labels.map((label) => label.name);
+  
+  // 按优先级顺序检查标签（major > minor > patch）
   let tempReleaseType = '' as ReleaseType;
   
-  // 根据 PR 标签确定基础发布类型
   if (labelNames.includes('major')) {
     tempReleaseType = 'premajor';
+    logger.info('检测到 major 标签，使用 premajor 发布类型');
   } else if (labelNames.includes('minor')) {
     tempReleaseType = 'preminor';
+    logger.info('检测到 minor 标签，使用 preminor 发布类型');
   } else if (labelNames.includes('patch')) {
     tempReleaseType = 'prepatch';
+    logger.info('检测到 patch 标签，使用 prepatch 发布类型');
   }
-
-  // 如果当前版本已经高于 beta 版本，则只需要升级预发布版本号
-  if (tempReleaseType && semver.gt(currentVersion, betaVersion)) {
-    tempReleaseType = 'prerelease';
+  
+  // 如果有多个标签，记录所有检测到的标签
+  const versionLabels = labelNames.filter(name => ['major', 'minor', 'patch'].includes(name));
+  if (versionLabels.length > 1) {
+    logger.info(`检测到多个版本标签: ${versionLabels.join(', ')}，使用最高优先级: ${tempReleaseType}`);
   }
 
   return tempReleaseType;
