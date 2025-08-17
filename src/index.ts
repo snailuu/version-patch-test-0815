@@ -135,11 +135,12 @@ async function run() {
       // Alpha 分支：添加或升级 alpha 预发布版本
       const lastSemver = semver.parse(currentVersion);
       if (lastSemver && (!lastSemver.prerelease || lastSemver.prerelease[0] !== 'alpha')) {
-        logger.info(`上一个版本 (${currentVersion}) 来自 beta 或 main, 需要提升 minor 版本。`);
+        logger.info(`上一个版本 (${currentVersion}) 来自 beta 或 main, 需要提升版本。`);
         newVersion = semver.inc(currentVersion, releaseType, 'alpha');
       } else {
-        // 升级 alpha 补丁版本
-        newVersion = semver.inc(currentVersion, releaseType, 'alpha');
+        // 已经是 alpha 版本，只升级预发布版本号
+        logger.info(`当前已是 alpha 版本 (${currentVersion}), 只升级预发布版本号。`);
+        newVersion = semver.inc(currentVersion, 'prerelease', 'alpha');
       }
     } else if (targetBranch === 'beta') {
       // Beta 分支：升级 beta 预发布版本
