@@ -20,6 +20,45 @@ const octokit = (() => {
 })();
 
 /**
+ * 获取最近合并到目标分支的 PR 信息
+ * 在 push 事件中使用，用于获取 PR 标签
+ */
+async function getRecentMergedPR(targetBranch: string) {
+  try {
+    // 获取最近的提交，查找合并提交
+    const { data: commits } = await octokit.rest.repos.listCommits({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      sha: targetBranch,
+      per_page: 10
+    });
+
+    // 查找最近的 merge commit
+    for (const commit of commits) {
+      if (commit.commit.message.includes('Merge pull request #')) {
+        const prMatch = commit.commit.message.match(/Merge pull request #(\d+)/);
+        if (prMatch) {
+          const prNumber = parseInt(prMatch[1]);
+          const { data: pr } = await octokit.rest.pulls.get({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: prNumber
+          });
+          logger.info(`找到最近合并的 PR #${prNumber}`);
+          return pr;
+        }
+      }
+    }
+    
+    logger.info('未找到最近合并的 PR');
+    return {} as any;
+  } catch (error) {
+    logger.warning(`获取最近合并的 PR 失败: ${error}`);
+    return {} as any;
+  }
+}
+
+/**
  * 获取当前 Pull Request 信息
  * 如果当前事件不是 PR 事件，返回空对象；否则从 GitHub API 获取完整的 PR 信息
  */
@@ -168,24 +207,35 @@ function getReleaseTypeFromLabel(labels: { name: string }[] = [], betaVersion: s
  */
 async function run() {
   try {
-    const pr = await getCurentPR();
-
     // 从 GitHub 上下文获取目标分支
     let targetBranch = context.ref.split('/').pop()!;
-
-    // 如果当前分支不是支持的分支，尝试从 PR 信息中获取
-    if (targetBranch !== 'alpha' && targetBranch !== 'beta' && targetBranch !== 'main') {
-      logger.info(`不支持的分支: ${context.ref}, 从 pr 获取`);
-      logger.info(`pr base ref ${pr.head.ref}`);
-
-      targetBranch = pr.head.ref.split('/').pop()!;
-      if (targetBranch !== 'alpha' && targetBranch !== 'beta' && targetBranch !== 'main') {
-        logger.info(`不支持的分支: ${pr.head.ref}, 从 pr 获取`);
-        return;
-      }
+    
+    // 判断是否为 dry-run 模式（PR 事件为预览，push 事件为实际执行）
+    const isDryRun = context.eventName === 'pull_request';
+    
+    // 根据事件类型获取 PR 信息
+    let pr: any;
+    if (context.payload.pull_request) {
+      // PR 事件：获取当前 PR
+      pr = await getCurentPR();
+      targetBranch = pr.base?.ref || context.payload.pull_request.base.ref;
+      logger.info(`PR 事件 (预览模式)，目标分支为: ${targetBranch}`);
+    } else if (context.eventName === 'push') {
+      // Push 事件：查找最近合并的 PR
+      pr = await getRecentMergedPR(targetBranch);
+      logger.info(`Push 事件 (执行模式)，目标分支为: ${targetBranch}`);
+    } else {
+      logger.info(`不支持的事件类型: ${context.eventName}`);
+      return;
     }
 
-    logger.info(`目标分支: ${targetBranch}`);
+    // 检查是否为支持的分支
+    if (targetBranch !== 'alpha' && targetBranch !== 'beta' && targetBranch !== 'main') {
+      logger.info(`不支持的分支: ${targetBranch}，跳过版本管理`);
+      return;
+    }
+
+    logger.info(`目标分支: ${targetBranch} ${isDryRun ? '(预览模式)' : '(执行模式)'}`);
 
     // 配置 Git 用户信息
     await signUser();
@@ -247,7 +297,27 @@ async function run() {
       newVersion = semver.inc(currentTagVersion, 'patch');
     }
 
-    logger.info(`新版本: ${newVersion}`);
+    logger.info(`${isDryRun ? '预览' : '新'}版本: ${newVersion}`);
+
+    if (isDryRun) {
+      // PR 预览模式：只显示版本号，不执行实际操作
+      logger.info('='.repeat(50));
+      logger.info(`🔍 版本预览 (PR #${pr.number || 'unknown'})`);
+      logger.info(`📋 目标分支: ${targetBranch}`);
+      logger.info(`🏷️  当前版本: ${currentTagVersion}`);
+      logger.info(`🆕 新版本: ${newVersion}`);
+      logger.info(`📝 发布类型: ${releaseType}`);
+      logger.info('='.repeat(50));
+      logger.info('ℹ️  这是预览模式，不会创建 tag 或修改文件');
+      
+      // 输出预览信息供后续步骤使用
+      core.setOutput('preview-version', newVersion);
+      core.setOutput('is-preview', 'true');
+      return;
+    }
+
+    // 执行模式：实际更新版本
+    logger.info('开始执行版本更新...');
 
     await exec('git', ['switch', targetBranch]);
 
@@ -326,6 +396,7 @@ async function run() {
 
     // 输出新版本号供后续步骤使用
     core.setOutput('next-version', newVersion);
+    core.setOutput('is-preview', 'false');
   } catch (error: any) {
     core.setFailed(error.message);
   }

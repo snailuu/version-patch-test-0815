@@ -11,7 +11,7 @@ This is a GitHub Action for automatic package version patching, designed to auto
 ### Build and Development
 - `pnpm install` - Install dependencies
 - `pnpm build` - Build the action using tsup (outputs to dist/index.cjs)
-- `pnpm dev` - Build in watch mode (note: README mentions this but no dev script exists in package.json)
+- Note: README mentions `pnpm dev` but no dev script exists in package.json
 
 ### Code Quality
 - `pnpm check` - Run Biome linter and formatter with auto-fix
@@ -21,11 +21,13 @@ This is a GitHub Action for automatic package version patching, designed to auto
 
 ### Core Components
 
-**src/index.ts** - Main entry point containing the GitHub Action logic:
+**src/index.ts** - Main entry point (230 lines) containing the GitHub Action logic:
 - Handles PR-based and push-based version bumping
 - Supports three branches: `main`, `beta`, and `alpha`
 - Uses PR labels (`major`, `minor`, `patch`) to determine version increment type
-- Implements complex branch synchronization logic between main → beta → alpha
+- Implements complex branch synchronization logic: main → beta → alpha
+- Contains detailed Git stashing/unstashing logic to safely fetch beta version info
+- Handles merge conflicts during synchronization with fallback strategies
 
 **src/core.ts** - Simple wrapper around GitHub Actions core utilities providing a logger interface
 
@@ -40,8 +42,11 @@ The action implements a three-tier branching strategy:
 Version bumping behavior:
 - Uses semver library for version calculations
 - PR labels determine bump type: `major` → premajor, `minor` → preminor, `patch` → prepatch
-- Automatic branch synchronization: main changes flow to beta, beta changes flow to alpha
-- Handles merge conflicts during synchronization with fallback strategies
+- **Alpha branch**: Adds `-alpha` prerelease identifier, upgrades existing alpha versions
+- **Beta branch**: Always increments to next `prerelease` with `-beta` identifier
+- **Main branch**: Removes prerelease identifiers, creates patch release
+- Automatic branch synchronization: main → beta, beta → alpha
+- Complex conflict resolution: preserves higher version numbers during merges
 
 ### Dependencies
 
@@ -52,9 +57,9 @@ Key external dependencies:
 
 ### Build Configuration
 
-- **tsup**: Bundles all dependencies into single CJS file at dist/index.cjs
-- **Biome**: Code formatting and linting (120 char line width, single quotes, space indentation)
-- **TypeScript**: Configured for Node.js development
+- **tsup**: Bundles all dependencies into single CJS file at dist/index.cjs (configured to include all dependencies via `noExternal`)
+- **Biome**: Code formatting and linting (120 char line width, single quotes, space indentation, allows explicit `any`, disables non-null assertions)
+- **TypeScript**: Configured for Node.js development with ES modules
 
 ### GitHub Action Configuration
 
@@ -68,6 +73,15 @@ The action is triggered by:
 - Push events to main/alpha/beta branches
 - Repository dispatch events for label changes
 
+### Known Issues
+
+As documented in todo.md:
+- **Merge conflicts**: Alpha branch changes can be lost during beta→alpha sync when alpha version is higher than beta
+- **Label persistence**: PR labels cause continuous version bumps instead of incrementing prerelease numbers
+- **Missing automation**: No automatic issue creation for unresolvable merge conflicts
+
 ### Testing
 
 No test framework is currently configured in this project.
+- #
+- 重新总结一下

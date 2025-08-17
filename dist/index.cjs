@@ -28011,6 +28011,36 @@ async function signUser() {
 var octokit = (() => {
   return (0, import_github.getOctokit)(core_default.getInput("token", { required: true }));
 })();
+async function getRecentMergedPR(targetBranch) {
+  try {
+    const { data: commits } = await octokit.rest.repos.listCommits({
+      owner: import_github.context.repo.owner,
+      repo: import_github.context.repo.repo,
+      sha: targetBranch,
+      per_page: 10
+    });
+    for (const commit of commits) {
+      if (commit.commit.message.includes("Merge pull request #")) {
+        const prMatch = commit.commit.message.match(/Merge pull request #(\d+)/);
+        if (prMatch) {
+          const prNumber = parseInt(prMatch[1]);
+          const { data: pr } = await octokit.rest.pulls.get({
+            owner: import_github.context.repo.owner,
+            repo: import_github.context.repo.repo,
+            pull_number: prNumber
+          });
+          logger.info(`\u627E\u5230\u6700\u8FD1\u5408\u5E76\u7684 PR #${prNumber}`);
+          return pr;
+        }
+      }
+    }
+    logger.info("\u672A\u627E\u5230\u6700\u8FD1\u5408\u5E76\u7684 PR");
+    return {};
+  } catch (error2) {
+    logger.warning(`\u83B7\u53D6\u6700\u8FD1\u5408\u5E76\u7684 PR \u5931\u8D25: ${error2}`);
+    return {};
+  }
+}
 async function getCurentPR() {
   if (!import_github.context.payload.pull_request) {
     return {};
@@ -28102,19 +28132,27 @@ function getReleaseTypeFromLabel(labels = [], betaVersion, currentVersion) {
   return tempReleaseType;
 }
 async function run() {
+  var _a2;
   try {
-    const pr = await getCurentPR();
     let targetBranch = import_github.context.ref.split("/").pop();
-    if (targetBranch !== "alpha" && targetBranch !== "beta" && targetBranch !== "main") {
-      logger.info(`\u4E0D\u652F\u6301\u7684\u5206\u652F: ${import_github.context.ref}, \u4ECE pr \u83B7\u53D6`);
-      logger.info(`pr base ref ${pr.head.ref}`);
-      targetBranch = pr.head.ref.split("/").pop();
-      if (targetBranch !== "alpha" && targetBranch !== "beta" && targetBranch !== "main") {
-        logger.info(`\u4E0D\u652F\u6301\u7684\u5206\u652F: ${pr.head.ref}, \u4ECE pr \u83B7\u53D6`);
-        return;
-      }
+    const isDryRun = import_github.context.eventName === "pull_request";
+    let pr;
+    if (import_github.context.payload.pull_request) {
+      pr = await getCurentPR();
+      targetBranch = ((_a2 = pr.base) == null ? void 0 : _a2.ref) || import_github.context.payload.pull_request.base.ref;
+      logger.info(`PR \u4E8B\u4EF6 (\u9884\u89C8\u6A21\u5F0F)\uFF0C\u76EE\u6807\u5206\u652F\u4E3A: ${targetBranch}`);
+    } else if (import_github.context.eventName === "push") {
+      pr = await getRecentMergedPR(targetBranch);
+      logger.info(`Push \u4E8B\u4EF6 (\u6267\u884C\u6A21\u5F0F)\uFF0C\u76EE\u6807\u5206\u652F\u4E3A: ${targetBranch}`);
+    } else {
+      logger.info(`\u4E0D\u652F\u6301\u7684\u4E8B\u4EF6\u7C7B\u578B: ${import_github.context.eventName}`);
+      return;
     }
-    logger.info(`\u76EE\u6807\u5206\u652F: ${targetBranch}`);
+    if (targetBranch !== "alpha" && targetBranch !== "beta" && targetBranch !== "main") {
+      logger.info(`\u4E0D\u652F\u6301\u7684\u5206\u652F: ${targetBranch}\uFF0C\u8DF3\u8FC7\u7248\u672C\u7BA1\u7406`);
+      return;
+    }
+    logger.info(`\u76EE\u6807\u5206\u652F: ${targetBranch} ${isDryRun ? "(\u9884\u89C8\u6A21\u5F0F)" : "(\u6267\u884C\u6A21\u5F0F)"}`);
     await signUser();
     const pkgPath = await resolvePackageJSON();
     const currentTagVersion = await getLatestTagVersion(
@@ -28153,7 +28191,21 @@ async function run() {
     } else if (targetBranch === "main") {
       newVersion = import_semver.default.inc(currentTagVersion, "patch");
     }
-    logger.info(`\u65B0\u7248\u672C: ${newVersion}`);
+    logger.info(`${isDryRun ? "\u9884\u89C8" : "\u65B0"}\u7248\u672C: ${newVersion}`);
+    if (isDryRun) {
+      logger.info("=".repeat(50));
+      logger.info(`\u{1F50D} \u7248\u672C\u9884\u89C8 (PR #${pr.number || "unknown"})`);
+      logger.info(`\u{1F4CB} \u76EE\u6807\u5206\u652F: ${targetBranch}`);
+      logger.info(`\u{1F3F7}\uFE0F  \u5F53\u524D\u7248\u672C: ${currentTagVersion}`);
+      logger.info(`\u{1F195} \u65B0\u7248\u672C: ${newVersion}`);
+      logger.info(`\u{1F4DD} \u53D1\u5E03\u7C7B\u578B: ${releaseType}`);
+      logger.info("=".repeat(50));
+      logger.info("\u2139\uFE0F  \u8FD9\u662F\u9884\u89C8\u6A21\u5F0F\uFF0C\u4E0D\u4F1A\u521B\u5EFA tag \u6216\u4FEE\u6539\u6587\u4EF6");
+      core_default.setOutput("preview-version", newVersion);
+      core_default.setOutput("is-preview", "true");
+      return;
+    }
+    logger.info("\u5F00\u59CB\u6267\u884C\u7248\u672C\u66F4\u65B0...");
     await (0, import_exec.exec)("git", ["switch", targetBranch]);
     pkgInfo.version = newVersion;
     await writePackageJSON(pkgPath, pkgInfo);
@@ -28215,6 +28267,7 @@ async function run() {
       });
     }
     core_default.setOutput("next-version", newVersion);
+    core_default.setOutput("is-preview", "false");
   } catch (error2) {
     core_default.setFailed(error2.message);
   }
