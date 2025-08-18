@@ -448,8 +448,16 @@ async function calculateNewVersion(
       return semver.inc(beta, releaseType, 'alpha');
     }
 
-    logger.info(`当前 alpha 版本 (${currentTag}) 未封版，递增预发布版本号。`);
-    return semver.inc(currentTag, 'prerelease', 'alpha');
+    // 根据 releaseType 决定是升级版本还是递增 prerelease
+    if (releaseType && releaseType !== 'prerelease') {
+      // 有明确的版本升级类型（major/minor/patch），升级到新版本
+      logger.info(`检测到 ${releaseType} 变更，升级到新的 alpha 版本`);
+      return semver.inc(currentTag, releaseType, 'alpha');
+    } else {
+      // 没有版本升级标签，只递增 prerelease 编号
+      logger.info(`当前 alpha 版本 (${currentTag}) 未封版，递增预发布版本号。`);
+      return semver.inc(currentTag, 'prerelease', 'alpha');
+    }
   }
 
   if (targetBranch === 'beta') {
@@ -556,7 +564,7 @@ async function updateVersionAndCreateTag(newVersion: string, targetBranch: Suppo
   await exec('git', ['push', 'origin', targetBranch]);
   await exec('git', ['push', 'origin', newVersion]);
 
-  // 🎯 在打tag后更新 CHANGELOG
+  // 在打tag后更新 CHANGELOG
   await updateChangelog(newVersion);
 
   // 检查是否有 CHANGELOG 更改需要提交
