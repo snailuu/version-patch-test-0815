@@ -199,10 +199,9 @@ async function getLatestTagVersion(branchSuffix: string = ''): Promise<string | 
     }
 
     const latestTag = tags[0];
-    // 移除 v 前缀返回纯版本号
-    const version = latestTag.startsWith('v') ? latestTag.slice(1) : latestTag;
-    logger.info(`获取最新 ${branchSuffix || 'main'} tag: ${latestTag} (版本: ${version})`);
-    return version;
+    // 保持 v 前缀返回完整标签名
+    logger.info(`获取最新 ${branchSuffix || 'main'} tag: ${latestTag}`);
+    return latestTag;
   } catch (error) {
     logger.warning(`获取 ${branchSuffix || 'main'} tag 失败: ${error}`);
     return null;
@@ -434,20 +433,26 @@ async function calculateNewVersion(
   if (targetBranch === 'alpha') {
     if (!currentTag) {
       logger.info('没有找到 alpha tag，创建第一个 alpha 版本');
-      const baseVersion = betaTag || DEFAULT_VERSIONS.base;
-      return semver.inc(baseVersion, releaseType, 'alpha');
+      const baseVersion = betaTag ? betaTag.replace(/^v/, '') : DEFAULT_VERSIONS.base;
+      const newVersion = semver.inc(baseVersion, releaseType, 'alpha');
+      return newVersion ? `v${newVersion}` : null;
     }
 
-    const lastSemver = semver.parse(currentTag);
+    // 移除 v 前缀进行 semver 计算
+    const currentVersion = currentTag.replace(/^v/, '');
+    const lastSemver = semver.parse(currentVersion);
     if (lastSemver && (!lastSemver.prerelease || lastSemver.prerelease[0] !== 'alpha')) {
       logger.info(`上一个版本 (${currentTag}) 来自 beta 或 main, 需要提升版本。`);
-      return semver.inc(currentTag, releaseType, 'alpha');
+      const newVersion = semver.inc(currentVersion, releaseType, 'alpha');
+      return newVersion ? `v${newVersion}` : null;
     }
 
-    const isSealed = await isAlphaVersionSealed(currentTag);
+    const isSealed = await isAlphaVersionSealed(currentVersion);
     if (isSealed) {
       logger.info(`当前 alpha 版本 (${currentTag}) 已封版，重新计数。`);
-      return semver.inc(beta, releaseType, 'alpha');
+      const betaVersion = betaTag ? betaTag.replace(/^v/, '') : DEFAULT_VERSIONS.beta;
+      const newVersion = semver.inc(betaVersion, releaseType, 'alpha');
+      return newVersion ? `v${newVersion}` : null;
     }
 
     // 根据 releaseType 决定是升级版本还是递增 prerelease
@@ -455,7 +460,8 @@ async function calculateNewVersion(
       // 有明确的版本升级类型，但在未封版状态下只递增 prerelease
       // 只有封版后才会根据标签升级到新的版本号
       logger.info(`检测到 ${releaseType} 变更，但当前版本未封版，递增 prerelease 版本号`);
-      return semver.inc(currentTag, 'prerelease', 'alpha');
+      const newVersion = semver.inc(currentVersion, 'prerelease', 'alpha');
+      return newVersion ? `v${newVersion}` : null;
     } else {
       // 没有版本升级标签，跳过版本更新
       logger.info(`当前 alpha 版本 (${currentTag}) 未封版且无版本标签，跳过版本更新`);
@@ -464,13 +470,15 @@ async function calculateNewVersion(
   }
 
   if (targetBranch === 'beta') {
-    const baseVersion = betaTag || DEFAULT_VERSIONS.beta;
-    return semver.inc(baseVersion, 'prerelease', 'beta');
+    const baseVersion = betaTag ? betaTag.replace(/^v/, '') : DEFAULT_VERSIONS.beta;
+    const newVersion = semver.inc(baseVersion, 'prerelease', 'beta');
+    return newVersion ? `v${newVersion}` : null;
   }
 
   if (targetBranch === 'main') {
-    const baseVersion = currentTag || DEFAULT_VERSIONS.base;
-    return semver.inc(baseVersion, 'patch');
+    const baseVersion = currentTag ? currentTag.replace(/^v/, '') : DEFAULT_VERSIONS.base;
+    const newVersion = semver.inc(baseVersion, 'patch');
+    return newVersion ? `v${newVersion}` : null;
   }
 
   return null;
@@ -548,28 +556,28 @@ async function updateVersionAndCreateTag(newVersion: string, targetBranch: Suppo
 
   await exec('git', ['switch', targetBranch]);
 
-  // 更新 package.json 版本
+  // 移除 v 前缀更新 package.json（package.json 中不使用 v 前缀）
+  const packageVersion = newVersion.replace(/^v/, '');
   const pkgPath = await resolvePackageJSON();
   const pkgInfo = await readPackageJSON(pkgPath);
-  pkgInfo.version = newVersion;
+  pkgInfo.version = packageVersion;
   await writePackageJSON(pkgPath, pkgInfo);
   logger.info('版本文件已更新');
 
   // 提交版本更改并推送
   await exec('git', ['add', '.']);
-  await exec('git', ['commit', '-m', COMMIT_TEMPLATES.VERSION_BUMP(newVersion, targetBranch)]);
+  await exec('git', ['commit', '-m', COMMIT_TEMPLATES.VERSION_BUMP(packageVersion, targetBranch)]);
 
-  // 创建版本标签（添加 v 前缀以符合 conventional commits 规范）
-  const tagName = `v${newVersion}`;
-  await exec('git', ['tag', tagName]);
-  logger.info(`已创建标签: ${tagName}`);
+  // 创建版本标签（newVersion 已包含 v 前缀）
+  await exec('git', ['tag', newVersion]);
+  logger.info(`已创建标签: ${newVersion}`);
 
   // 推送更改和标签
   await exec('git', ['push', 'origin', targetBranch]);
-  await exec('git', ['push', 'origin', tagName]);
+  await exec('git', ['push', 'origin', newVersion]);
 
   // 在打tag后更新 CHANGELOG
-  await updateChangelog(newVersion);
+  await updateChangelog(packageVersion);
 
   // 检查是否有 CHANGELOG 更改需要提交
   try {
@@ -584,7 +592,7 @@ async function updateVersionAndCreateTag(newVersion: string, targetBranch: Suppo
 
     if (hasChanges) {
       await exec('git', ['add', 'CHANGELOG.md']);
-      await exec('git', ['commit', '-m', `docs: update CHANGELOG for v${newVersion}`]);
+      await exec('git', ['commit', '-m', `docs: update CHANGELOG for ${newVersion}`]);
       await exec('git', ['push', 'origin', targetBranch]);
       logger.info('CHANGELOG 更新已提交并推送');
     } else {
