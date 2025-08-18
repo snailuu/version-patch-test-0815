@@ -450,13 +450,14 @@ async function calculateNewVersion(
 
     // 根据 releaseType 决定是升级版本还是递增 prerelease
     if (releaseType && releaseType !== 'prerelease') {
-      // 有明确的版本升级类型（major/minor/patch），升级到新版本
-      logger.info(`检测到 ${releaseType} 变更，升级到新的 alpha 版本`);
-      return semver.inc(currentTag, releaseType, 'alpha');
-    } else {
-      // 没有版本升级标签，只递增 prerelease 编号
-      logger.info(`当前 alpha 版本 (${currentTag}) 未封版，递增预发布版本号。`);
+      // 有明确的版本升级类型，但在未封版状态下只递增 prerelease
+      // 只有封版后才会根据标签升级到新的版本号
+      logger.info(`检测到 ${releaseType} 变更，但当前版本未封版，递增 prerelease 版本号`);
       return semver.inc(currentTag, 'prerelease', 'alpha');
+    } else {
+      // 没有版本升级标签，跳过版本更新
+      logger.info(`当前 alpha 版本 (${currentTag}) 未封版且无版本标签，跳过版本更新`);
+      return null;
     }
   }
 
