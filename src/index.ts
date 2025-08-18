@@ -188,10 +188,20 @@ async function getLatestTagVersion(branchSuffix: string = ''): Promise<string | 
       },
     });
 
-    const tags = stdout
+    let tags = stdout
       .trim()
       .split('\n')
       .filter((tag) => tag.trim().length > 0);
+
+    // 如果是获取 main 分支版本（branchSuffix 为空），只保留正式版本（不包含 prerelease）
+    if (!branchSuffix) {
+      tags = tags.filter((tag) => {
+        // 正式版本格式：v1.2.3，不包含 `-` 
+        // 排除 prerelease 版本：v1.2.3-alpha.0, v1.2.3-beta.0
+        return !tag.includes('-');
+      });
+      logger.info(`过滤后的 main 分支正式版本标签: ${tags.join(', ') || '无'}`);
+    }
 
     if (tags.length === 0) {
       logger.info(`未找到 ${branchSuffix || 'main'} 分支的 tag`);
