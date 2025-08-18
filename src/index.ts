@@ -288,38 +288,72 @@ async function checkIncompleteFeatures(): Promise<IncompleteFeatureCheck> {
 
     logger.info(`检查未完成功能: main=${mainTagVersion}, beta=${betaTagVersion}, alpha=${alphaTagVersion}`);
 
-    // 如果没有beta tag，说明没有未完成的功能
-    if (!betaTagVersion) {
-      logger.info('没有beta版本，无未完成功能');
+    // 如果没有 alpha 版本，允许新功能
+    if (!alphaTagVersion) {
+      logger.info('没有 alpha 版本，允许新功能');
       return { hasIncomplete: false, incompleteVersions: [] };
     }
 
-    // 如果没有main tag，说明有未完成的功能
+    // 解析 alpha 版本
+    const alphaParsed = semver.parse(alphaTagVersion);
+    if (!alphaParsed || !alphaParsed.prerelease || alphaParsed.prerelease[0] !== 'alpha') {
+      logger.warning(`alpha 版本格式异常: ${alphaTagVersion}`);
+      return { hasIncomplete: false, incompleteVersions: [] };
+    }
+
+    // 获取 alpha 的基础版本号
+    const alphaBase = `${alphaParsed.major}.${alphaParsed.minor}.${alphaParsed.patch}`;
+    logger.info(`当前 alpha 基础版本: ${alphaBase}`);
+
+    // 检查是否存在对应的 beta 版本
+    let stdout = '';
+    try {
+      await exec('git', ['tag', '-l', `v${alphaBase}-beta.*`], {
+        listeners: {
+          stdout: (data: Buffer) => {
+            stdout += data.toString();
+          },
+        },
+      });
+    } catch (error) {
+      logger.warning(`检查 beta 版本失败: ${error}`);
+      return { hasIncomplete: false, incompleteVersions: [] };
+    }
+
+    const betaTags = stdout.trim().split('\n').filter(tag => tag.trim().length > 0);
+    
+    if (betaTags.length === 0) {
+      logger.info(`alpha 基础版本 ${alphaBase} 没有对应的 beta 版本，允许新功能`);
+      return { hasIncomplete: false, incompleteVersions: [] };
+    }
+
+    logger.info(`发现 alpha 基础版本 ${alphaBase} 对应的 beta 版本: ${betaTags.join(', ')}`);
+
+    // 检查 main 分支是否已发布对应版本
     if (!mainTagVersion) {
-      logger.info('没有main版本，存在未完成功能');
-      return { hasIncomplete: true, incompleteVersions: [betaTagVersion] };
+      logger.info(`main 分支无版本，alpha 基础版本 ${alphaBase} 未完成发布流程`);
+      return { hasIncomplete: true, incompleteVersions: [`${alphaBase} (已封版但未发布到 main)`] };
     }
 
-    // 比较beta和main版本，如果beta版本更高，说明有未完成的功能
-    const betaParsed = semver.parse(betaTagVersion);
     const mainParsed = semver.parse(mainTagVersion);
-
-    if (!betaParsed || !mainParsed) {
-      logger.warning('版本解析失败');
+    if (!mainParsed) {
+      logger.warning('main 版本解析失败');
       return { hasIncomplete: false, incompleteVersions: [] };
     }
 
-    // 比较基础版本号（不包括prerelease）
-    const betaBase = `${betaParsed.major}.${betaParsed.minor}.${betaParsed.patch}`;
     const mainBase = `${mainParsed.major}.${mainParsed.minor}.${mainParsed.patch}`;
-
-    if (semver.gt(betaBase, mainBase)) {
-      logger.info(`存在未完成功能: beta基础版本(${betaBase}) > main版本(${mainBase})`);
-      return { hasIncomplete: true, incompleteVersions: [betaTagVersion] };
+    
+    // 比较 alpha 基础版本和 main 版本
+    if (semver.gt(alphaBase, mainBase)) {
+      logger.info(`alpha 基础版本 ${alphaBase} > main 版本 ${mainBase}，存在未完成功能`);
+      return { hasIncomplete: true, incompleteVersions: [`${alphaBase} (已封版但未发布到 main)`] };
+    } else if (semver.eq(alphaBase, mainBase)) {
+      logger.info(`alpha 基础版本 ${alphaBase} = main 版本 ${mainBase}，该版本已完成发布流程，允许新功能`);
+      return { hasIncomplete: false, incompleteVersions: [] };
+    } else {
+      logger.info(`alpha 基础版本 ${alphaBase} < main 版本 ${mainBase}，允许新功能`);
+      return { hasIncomplete: false, incompleteVersions: [] };
     }
-
-    logger.info('没有未完成功能');
-    return { hasIncomplete: false, incompleteVersions: [] };
   } catch (error) {
     logger.warning(`检查未完成功能失败: ${error}`);
     return { hasIncomplete: false, incompleteVersions: [] };
