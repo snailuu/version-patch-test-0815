@@ -28289,8 +28289,13 @@ async function calculateNewVersion(targetBranch, versionInfo, releaseType) {
       logger.info(`\u5F53\u524D alpha \u7248\u672C (${currentTag}) \u5DF2\u5C01\u7248\uFF0C\u91CD\u65B0\u8BA1\u6570\u3002`);
       return import_semver.default.inc(beta, releaseType, "alpha");
     }
-    logger.info(`\u5F53\u524D alpha \u7248\u672C (${currentTag}) \u672A\u5C01\u7248\uFF0C\u9012\u589E\u9884\u53D1\u5E03\u7248\u672C\u53F7\u3002`);
-    return import_semver.default.inc(currentTag, "prerelease", "alpha");
+    if (releaseType && releaseType !== "prerelease") {
+      logger.info(`\u68C0\u6D4B\u5230 ${releaseType} \u53D8\u66F4\uFF0C\u4F46\u5F53\u524D\u7248\u672C\u672A\u5C01\u7248\uFF0C\u9012\u589E prerelease \u7248\u672C\u53F7`);
+      return import_semver.default.inc(currentTag, "prerelease", "alpha");
+    } else {
+      logger.info(`\u5F53\u524D alpha \u7248\u672C (${currentTag}) \u672A\u5C01\u7248\u4E14\u65E0\u7248\u672C\u6807\u7B7E\uFF0C\u8DF3\u8FC7\u7248\u672C\u66F4\u65B0`);
+      return null;
+    }
   }
   if (targetBranch === "beta") {
     const baseVersion = betaTag || DEFAULT_VERSIONS.beta;
@@ -28305,14 +28310,35 @@ async function calculateNewVersion(targetBranch, versionInfo, releaseType) {
 async function updateChangelog(newVersion) {
   try {
     logger.info("\u5F00\u59CB\u751F\u6210 CHANGELOG...");
-    await (0, import_exec.exec)("npx", [
-      "conventional-changelog-cli",
-      "-p",
-      "conventionalcommits",
-      "-i",
-      "CHANGELOG.md",
-      "-s"
-    ]);
+    try {
+      await (0, import_exec.exec)("ls", ["CHANGELOG.md"]);
+      logger.info("CHANGELOG.md \u5DF2\u5B58\u5728\uFF0C\u589E\u91CF\u66F4\u65B0");
+    } catch {
+      logger.info("CHANGELOG.md \u4E0D\u5B58\u5728\uFF0C\u521B\u5EFA\u521D\u59CB\u7248\u672C");
+      await (0, import_exec.exec)("npx", [
+        "conventional-changelog-cli",
+        "-p",
+        "conventionalcommits",
+        "-i",
+        "CHANGELOG.md",
+        "-s",
+        "-r",
+        "0"
+        // 包含所有发布记录
+      ]);
+    }
+    try {
+      await (0, import_exec.exec)("ls", ["CHANGELOG.md"]);
+    } catch {
+      await (0, import_exec.exec)("npx", [
+        "conventional-changelog-cli",
+        "-p",
+        "conventionalcommits",
+        "-i",
+        "CHANGELOG.md",
+        "-s"
+      ]);
+    }
     logger.info("CHANGELOG \u751F\u6210\u5B8C\u6210");
   } catch (error2) {
     logger.warning(`CHANGELOG \u751F\u6210\u5931\u8D25\uFF0C\u5C1D\u8BD5\u5B89\u88C5\u4F9D\u8D56: ${error2}`);
@@ -28324,7 +28350,9 @@ async function updateChangelog(newVersion) {
         "conventionalcommits",
         "-i",
         "CHANGELOG.md",
-        "-s"
+        "-s",
+        "-r",
+        "0"
       ]);
       logger.info("CHANGELOG \u751F\u6210\u5B8C\u6210\uFF08\u5DF2\u5B89\u88C5\u4F9D\u8D56\uFF09");
     } catch (retryError) {
