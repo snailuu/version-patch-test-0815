@@ -474,13 +474,34 @@ async function updateChangelog(newVersion: string): Promise<void> {
   try {
     logger.info('开始生成 CHANGELOG...');
     
-    // 使用 npx 确保能找到包，即使没有全局安装
-    await exec('npx', [
-      'conventional-changelog-cli',
-      '-p', 'conventionalcommits',
-      '-i', 'CHANGELOG.md',
-      '-s'
-    ]);
+    // 检查 CHANGELOG.md 是否存在，如果不存在则创建初始版本
+    try {
+      await exec('ls', ['CHANGELOG.md']);
+      logger.info('CHANGELOG.md 已存在，增量更新');
+    } catch {
+      logger.info('CHANGELOG.md 不存在，创建初始版本');
+      // 创建初始 CHANGELOG，包含所有历史
+      await exec('npx', [
+        'conventional-changelog-cli',
+        '-p', 'conventionalcommits',
+        '-i', 'CHANGELOG.md',
+        '-s',
+        '-r', '0'  // 包含所有发布记录
+      ]);
+    }
+    
+    // 如果上面的步骤没有创建文件，使用标准增量更新
+    try {
+      await exec('ls', ['CHANGELOG.md']);
+    } catch {
+      // 使用 npx 确保能找到包，即使没有全局安装
+      await exec('npx', [
+        'conventional-changelog-cli',
+        '-p', 'conventionalcommits',
+        '-i', 'CHANGELOG.md',
+        '-s'
+      ]);
+    }
     
     logger.info('CHANGELOG 生成完成');
   } catch (error) {
@@ -491,12 +512,13 @@ async function updateChangelog(newVersion: string): Promise<void> {
       // 临时安装 conventional-changelog-cli
       await exec('npm', ['install', '-g', 'conventional-changelog-cli', 'conventional-changelog-conventionalcommits']);
       
-      // 重新尝试生成
+      // 重新尝试生成（包含所有历史）
       await exec('npx', [
         'conventional-changelog-cli',
         '-p', 'conventionalcommits', 
         '-i', 'CHANGELOG.md',
-        '-s'
+        '-s',
+        '-r', '0'
       ]);
       
       logger.info('CHANGELOG 生成完成（已安装依赖）');
