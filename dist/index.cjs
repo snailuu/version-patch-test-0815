@@ -28428,10 +28428,28 @@ async function updateVersionAndCreateTag(newVersion, targetBranch) {
     }
     let hasChanges = false;
     try {
-      await (0, import_exec.exec)("git", ["diff", "--exit-code", "CHANGELOG.md"]);
+      let stdout = "";
+      await (0, import_exec.exec)("git", ["status", "--porcelain", "CHANGELOG.md"], {
+        listeners: {
+          stdout: (data) => {
+            stdout += data.toString();
+          }
+        }
+      });
+      if (stdout.trim().length > 0) {
+        hasChanges = true;
+        logger.info(`\u68C0\u6D4B\u5230 CHANGELOG.md \u53D8\u5316: ${stdout.trim()}`);
+      } else {
+        try {
+          await (0, import_exec.exec)("git", ["diff", "--exit-code", "CHANGELOG.md"]);
+          hasChanges = false;
+        } catch {
+          hasChanges = true;
+        }
+      }
+    } catch (error2) {
+      logger.warning(`\u68C0\u67E5 CHANGELOG \u53D8\u5316\u5931\u8D25: ${error2}`);
       hasChanges = false;
-    } catch {
-      hasChanges = true;
     }
     if (hasChanges) {
       await (0, import_exec.exec)("git", ["add", "CHANGELOG.md"]);
