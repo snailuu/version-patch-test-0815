@@ -30,7 +30,7 @@ async function getRecentMergedPR(targetBranch: string) {
       owner: context.repo.owner,
       repo: context.repo.repo,
       sha: targetBranch,
-      per_page: 10
+      per_page: 10,
     });
 
     // 查找最近的 merge commit
@@ -42,14 +42,14 @@ async function getRecentMergedPR(targetBranch: string) {
           const { data: pr } = await octokit.rest.pulls.get({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            pull_number: prNumber
+            pull_number: prNumber,
           });
           logger.info(`找到最近合并的 PR #${prNumber}`);
           return pr;
         }
       }
     }
-    
+
     logger.info('未找到最近合并的 PR');
     return {} as any;
   } catch (error) {
@@ -85,22 +85,25 @@ async function getLatestTagVersion(branchSuffix: string = ''): Promise<string | 
   try {
     let stdout = '';
     const pattern = branchSuffix ? `*-${branchSuffix}.*` : '*';
-    
+
     await exec('git', ['tag', '-l', pattern, '--sort=-version:refname'], {
       listeners: {
         stdout: (data: Buffer) => {
           stdout += data.toString();
-        }
-      }
+        },
+      },
     });
-    
-    const tags = stdout.trim().split('\n').filter(tag => tag.trim().length > 0);
-    
+
+    const tags = stdout
+      .trim()
+      .split('\n')
+      .filter((tag) => tag.trim().length > 0);
+
     if (tags.length === 0) {
       logger.info(`未找到 ${branchSuffix || 'main'} 分支的 tag`);
       return null;
     }
-    
+
     const latestTag = tags[0];
     logger.info(`获取最新 ${branchSuffix || 'main'} tag: ${latestTag}`);
     return latestTag;
@@ -122,15 +125,15 @@ async function isAlphaVersionSealed(alphaVersion: string): Promise<boolean> {
     if (!parsed || !parsed.prerelease || parsed.prerelease[0] !== 'alpha') {
       return false;
     }
-    
+
     const baseVersion = `${parsed.major}.${parsed.minor}.${parsed.patch}`;
-    
+
     // 使用 git tag -l 匹配所有对应的 beta 版本 (1.1.0-beta.*)
     try {
       // 获取所有匹配的 beta tags
       let stdout = '';
       let stderr = '';
-      
+
       const exitCode = await exec('git', ['tag', '-l', `${baseVersion}-beta.*`], {
         listeners: {
           stdout: (data: Buffer) => {
@@ -138,20 +141,22 @@ async function isAlphaVersionSealed(alphaVersion: string): Promise<boolean> {
           },
           stderr: (data: Buffer) => {
             stderr += data.toString();
-          }
-        }
+          },
+        },
       });
-      
+
       const betaTags = stdout.trim();
       const hasBetalTags = betaTags.length > 0;
-      
+
       if (hasBetalTags) {
-        const tagList = betaTags.split('\n').filter(tag => tag.trim().length > 0);
-        logger.info(`检查封版状态: ${alphaVersion} 基础版本 ${baseVersion} 已封版 (找到 ${tagList.length} 个beta版本: ${tagList.join(', ')})`);
+        const tagList = betaTags.split('\n').filter((tag) => tag.trim().length > 0);
+        logger.info(
+          `检查封版状态: ${alphaVersion} 基础版本 ${baseVersion} 已封版 (找到 ${tagList.length} 个beta版本: ${tagList.join(', ')})`,
+        );
       } else {
         logger.info(`检查封版状态: ${alphaVersion} 基础版本 ${baseVersion} 未封版 (无beta版本)`);
       }
-      
+
       return hasBetalTags;
     } catch (error) {
       logger.info(`检查封版状态: ${alphaVersion} 基础版本 ${baseVersion} 未封版 (git tag 查询失败)`);
@@ -172,10 +177,10 @@ async function isAlphaVersionSealed(alphaVersion: string): Promise<boolean> {
  */
 function getReleaseTypeFromLabel(labels: { name: string }[] = [], betaVersion: string, currentVersion: string) {
   const labelNames = labels.map((label) => label.name);
-  
+
   // 按优先级顺序检查标签（major > minor > patch）
   let tempReleaseType = '' as ReleaseType;
-  
+
   if (labelNames.includes('major')) {
     tempReleaseType = 'premajor';
     logger.info('检测到 major 标签，使用 premajor 发布类型');
@@ -186,9 +191,9 @@ function getReleaseTypeFromLabel(labels: { name: string }[] = [], betaVersion: s
     tempReleaseType = 'prepatch';
     logger.info('检测到 patch 标签，使用 prepatch 发布类型');
   }
-  
+
   // 如果有多个标签，记录所有检测到的标签
-  const versionLabels = labelNames.filter(name => ['major', 'minor', 'patch'].includes(name));
+  const versionLabels = labelNames.filter((name) => ['major', 'minor', 'patch'].includes(name));
   if (versionLabels.length > 1) {
     logger.info(`检测到多个版本标签: ${versionLabels.join(', ')}，使用最高优先级: ${tempReleaseType}`);
   }
@@ -198,7 +203,7 @@ function getReleaseTypeFromLabel(labels: { name: string }[] = [], betaVersion: s
 
 /**
  * 主执行函数 - 自动版本升级和分支同步
- * 
+ *
  * 工作流程：
  * 1. 确定目标分支（main/beta/alpha）
  * 2. 获取 beta 分支版本作为参考
@@ -211,10 +216,10 @@ async function run() {
   try {
     // 从 GitHub 上下文获取目标分支
     let targetBranch = context.ref.split('/').pop()!;
-    
+
     // 判断是否为 dry-run 模式（PR 事件为预览，push 事件为实际执行）
     const isDryRun = context.eventName === 'pull_request';
-    
+
     // 根据事件类型获取 PR 信息
     let pr: any;
     if (context.payload.pull_request) {
@@ -245,17 +250,15 @@ async function run() {
 
     // 读取当前分支 package.json 版本（用于后备）
     const pkgInfo = await readPackageJSON(pkgPath);
-    
+
     // 获取各分支的最新 tag 版本（以 tag 为准）
-    const currentTagVersion = await getLatestTagVersion(
-      targetBranch === 'main' ? '' : targetBranch
-    );
+    const currentTagVersion = await getLatestTagVersion(targetBranch === 'main' ? '' : targetBranch);
     const betaTagVersion = await getLatestTagVersion('beta');
-    
+
     // 确定当前版本和 beta 版本（使用 package.json 作为后备）
     const currentVersion = currentTagVersion || pkgInfo.version || '0.0.0';
     const betaVersion = betaTagVersion || '0.0.0-beta.0';
-    
+
     logger.info(`当前 ${targetBranch} tag 版本: ${currentTagVersion || '无'}`);
     logger.info(`当前使用版本: ${currentVersion}`);
     logger.info(`beta tag 版本: ${betaTagVersion || '无'}`);
@@ -274,7 +277,7 @@ async function run() {
 
     if (targetBranch === 'alpha') {
       // Alpha 分支：基于封版重新计数规则计算版本
-      
+
       if (!currentTagVersion) {
         // 情况1: 没有 alpha tag，这是第一个 alpha 版本
         logger.info(`没有找到 alpha tag，基于当前版本 (${currentVersion}) 创建第一个 alpha 版本`);
@@ -282,7 +285,7 @@ async function run() {
       } else {
         // 情况2: 已有 alpha tag，检查是否封版
         const lastSemver = semver.parse(currentTagVersion);
-        
+
         if (lastSemver && (!lastSemver.prerelease || lastSemver.prerelease[0] !== 'alpha')) {
           // 版本来自 beta 或 main 分支
           logger.info(`上一个版本 (${currentTagVersion}) 来自 beta 或 main, 需要提升版本。`);
@@ -290,7 +293,7 @@ async function run() {
         } else {
           // 已经是 alpha 版本，检查是否封版
           const isSealed = await isAlphaVersionSealed(currentTagVersion);
-          
+
           if (isSealed) {
             // 已封版：重新计数，基于 beta tag 版本计算新的 alpha 版本
             logger.info(`当前 alpha 版本 (${currentTagVersion}) 已封版，重新计数。`);
@@ -315,16 +318,62 @@ async function run() {
     logger.info(`${isDryRun ? '预览' : '新'}版本: ${newVersion}`);
 
     if (isDryRun) {
-      // PR 预览模式：只显示版本号，不执行实际操作
-      logger.info('='.repeat(50));
-      logger.info(`🔍 版本预览 (PR #${pr.number || 'unknown'})`);
-      logger.info(`📋 目标分支: ${targetBranch}`);
-      logger.info(`🏷️  当前版本: ${currentTagVersion}`);
-      logger.info(`🆕 新版本: ${newVersion}`);
-      logger.info(`📝 发布类型: ${releaseType}`);
-      logger.info('='.repeat(50));
-      logger.info('ℹ️  这是预览模式，不会创建 tag 或修改文件');
-      
+      // PR 预览模式：创建或更新 PR 评论显示版本信息
+      const prNumber = pr.number || context.payload.pull_request?.number;
+
+      if (!prNumber) {
+        logger.warning('无法获取 PR 编号，跳过评论发布');
+        return;
+      }
+
+      // 构建评论内容
+      const commentBody = `## 📦 版本预览
+
+| 项目 | 值 |
+|------|-----|
+| **目标分支** | \`${targetBranch}\` |
+| **当前版本** | \`${currentTagVersion || '无'}\` |
+| **下一版本** | \`${newVersion}\` |
+| **发布类型** | \`${releaseType}\` |
+
+> ℹ️ 这是预览模式，合并 PR 后将自动创建 tag 并更新版本。`;
+
+      try {
+        // 获取该 PR 的所有评论
+        const { data: comments } = await octokit.rest.issues.listComments({
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          issue_number: prNumber,
+        });
+
+        // 查找是否已有版本预览评论（通过特定标识符）
+        const botComment = comments.find(
+          (comment) => comment.user?.type === 'Bot' && comment.body?.includes('## 📦 版本预览'),
+        );
+
+        if (botComment) {
+          // 更新现有评论
+          await octokit.rest.issues.updateComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            comment_id: botComment.id,
+            body: commentBody,
+          });
+          logger.info(`已更新 PR #${prNumber} 的版本预览评论`);
+        } else {
+          // 创建新评论
+          await octokit.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: prNumber,
+            body: commentBody,
+          });
+          logger.info(`已在 PR #${prNumber} 创建版本预览评论`);
+        }
+      } catch (error) {
+        logger.warning(`发布 PR 评论失败: ${error}`);
+      }
+
       // 输出预览信息供后续步骤使用
       core.setOutput('preview-version', newVersion);
       core.setOutput('is-preview', 'true');
@@ -344,11 +393,11 @@ async function run() {
     // 提交版本更改并推送
     await exec('git', ['add', '.']);
     await exec('git', ['commit', '-m', `chore: bump version to ${newVersion} for ${targetBranch}`]);
-    
+
     // 创建版本标签
     await exec('git', ['tag', newVersion!]);
     logger.info(`已创建标签: ${newVersion}`);
-    
+
     // 推送更改和标签
     await exec('git', ['push', 'origin', targetBranch]);
     await exec('git', ['push', 'origin', newVersion!]);

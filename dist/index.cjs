@@ -28100,7 +28100,9 @@ async function isAlphaVersionSealed(alphaVersion) {
       const hasBetalTags = betaTags.length > 0;
       if (hasBetalTags) {
         const tagList = betaTags.split("\n").filter((tag) => tag.trim().length > 0);
-        logger.info(`\u68C0\u67E5\u5C01\u7248\u72B6\u6001: ${alphaVersion} \u57FA\u7840\u7248\u672C ${baseVersion} \u5DF2\u5C01\u7248 (\u627E\u5230 ${tagList.length} \u4E2Abeta\u7248\u672C: ${tagList.join(", ")})`);
+        logger.info(
+          `\u68C0\u67E5\u5C01\u7248\u72B6\u6001: ${alphaVersion} \u57FA\u7840\u7248\u672C ${baseVersion} \u5DF2\u5C01\u7248 (\u627E\u5230 ${tagList.length} \u4E2Abeta\u7248\u672C: ${tagList.join(", ")})`
+        );
       } else {
         logger.info(`\u68C0\u67E5\u5C01\u7248\u72B6\u6001: ${alphaVersion} \u57FA\u7840\u7248\u672C ${baseVersion} \u672A\u5C01\u7248 (\u65E0beta\u7248\u672C)`);
       }
@@ -28134,7 +28136,7 @@ function getReleaseTypeFromLabel(labels = [], betaVersion, currentVersion) {
   return tempReleaseType;
 }
 async function run() {
-  var _a2;
+  var _a2, _b;
   try {
     let targetBranch = import_github.context.ref.split("/").pop();
     const isDryRun = import_github.context.eventName === "pull_request";
@@ -28158,9 +28160,7 @@ async function run() {
     await signUser();
     const pkgPath = await resolvePackageJSON();
     const pkgInfo = await readPackageJSON(pkgPath);
-    const currentTagVersion = await getLatestTagVersion(
-      targetBranch === "main" ? "" : targetBranch
-    );
+    const currentTagVersion = await getLatestTagVersion(targetBranch === "main" ? "" : targetBranch);
     const betaTagVersion = await getLatestTagVersion("beta");
     const currentVersion = currentTagVersion || pkgInfo.version || "0.0.0";
     const betaVersion = betaTagVersion || "0.0.0-beta.0";
@@ -28203,14 +28203,53 @@ async function run() {
     }
     logger.info(`${isDryRun ? "\u9884\u89C8" : "\u65B0"}\u7248\u672C: ${newVersion}`);
     if (isDryRun) {
-      logger.info("=".repeat(50));
-      logger.info(`\u{1F50D} \u7248\u672C\u9884\u89C8 (PR #${pr.number || "unknown"})`);
-      logger.info(`\u{1F4CB} \u76EE\u6807\u5206\u652F: ${targetBranch}`);
-      logger.info(`\u{1F3F7}\uFE0F  \u5F53\u524D\u7248\u672C: ${currentTagVersion}`);
-      logger.info(`\u{1F195} \u65B0\u7248\u672C: ${newVersion}`);
-      logger.info(`\u{1F4DD} \u53D1\u5E03\u7C7B\u578B: ${releaseType}`);
-      logger.info("=".repeat(50));
-      logger.info("\u2139\uFE0F  \u8FD9\u662F\u9884\u89C8\u6A21\u5F0F\uFF0C\u4E0D\u4F1A\u521B\u5EFA tag \u6216\u4FEE\u6539\u6587\u4EF6");
+      const prNumber = pr.number || ((_b = import_github.context.payload.pull_request) == null ? void 0 : _b.number);
+      if (!prNumber) {
+        logger.warning("\u65E0\u6CD5\u83B7\u53D6 PR \u7F16\u53F7\uFF0C\u8DF3\u8FC7\u8BC4\u8BBA\u53D1\u5E03");
+        return;
+      }
+      const commentBody = `## \u{1F4E6} \u7248\u672C\u9884\u89C8
+
+| \u9879\u76EE | \u503C |
+|------|-----|
+| **\u76EE\u6807\u5206\u652F** | \`${targetBranch}\` |
+| **\u5F53\u524D\u7248\u672C** | \`${currentTagVersion || "\u65E0"}\` |
+| **\u4E0B\u4E00\u7248\u672C** | \`${newVersion}\` |
+| **\u53D1\u5E03\u7C7B\u578B** | \`${releaseType}\` |
+
+> \u2139\uFE0F \u8FD9\u662F\u9884\u89C8\u6A21\u5F0F\uFF0C\u5408\u5E76 PR \u540E\u5C06\u81EA\u52A8\u521B\u5EFA tag \u5E76\u66F4\u65B0\u7248\u672C\u3002`;
+      try {
+        const { data: comments } = await octokit.rest.issues.listComments({
+          owner: import_github.context.repo.owner,
+          repo: import_github.context.repo.repo,
+          issue_number: prNumber
+        });
+        const botComment = comments.find(
+          (comment) => {
+            var _a3, _b2;
+            return ((_a3 = comment.user) == null ? void 0 : _a3.type) === "Bot" && ((_b2 = comment.body) == null ? void 0 : _b2.includes("## \u{1F4E6} \u7248\u672C\u9884\u89C8"));
+          }
+        );
+        if (botComment) {
+          await octokit.rest.issues.updateComment({
+            owner: import_github.context.repo.owner,
+            repo: import_github.context.repo.repo,
+            comment_id: botComment.id,
+            body: commentBody
+          });
+          logger.info(`\u5DF2\u66F4\u65B0 PR #${prNumber} \u7684\u7248\u672C\u9884\u89C8\u8BC4\u8BBA`);
+        } else {
+          await octokit.rest.issues.createComment({
+            owner: import_github.context.repo.owner,
+            repo: import_github.context.repo.repo,
+            issue_number: prNumber,
+            body: commentBody
+          });
+          logger.info(`\u5DF2\u5728 PR #${prNumber} \u521B\u5EFA\u7248\u672C\u9884\u89C8\u8BC4\u8BBA`);
+        }
+      } catch (error2) {
+        logger.warning(`\u53D1\u5E03 PR \u8BC4\u8BBA\u5931\u8D25: ${error2}`);
+      }
       core_default.setOutput("preview-version", newVersion);
       core_default.setOutput("is-preview", "true");
       return;

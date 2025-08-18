@@ -83,5 +83,3 @@ As documented in todo.md:
 ### Testing
 
 No test framework is currently configured in this project.
-- #
-- 重新总结一下
