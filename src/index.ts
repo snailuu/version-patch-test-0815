@@ -178,7 +178,7 @@ async function getCurrentPR(): Promise<PRData | null> {
 async function getLatestTagVersion(branchSuffix: string = ''): Promise<string | null> {
   try {
     let stdout = '';
-    const pattern = branchSuffix ? `*-${branchSuffix}.*` : '*';
+    const pattern = branchSuffix ? `v*-${branchSuffix}.*` : 'v*';
 
     await exec('git', ['tag', '-l', pattern, '--sort=-version:refname'], {
       listeners: {
@@ -199,8 +199,10 @@ async function getLatestTagVersion(branchSuffix: string = ''): Promise<string | 
     }
 
     const latestTag = tags[0];
-    logger.info(`获取最新 ${branchSuffix || 'main'} tag: ${latestTag}`);
-    return latestTag;
+    // 移除 v 前缀返回纯版本号
+    const version = latestTag.startsWith('v') ? latestTag.slice(1) : latestTag;
+    logger.info(`获取最新 ${branchSuffix || 'main'} tag: ${latestTag} (版本: ${version})`);
+    return version;
   } catch (error) {
     logger.warning(`获取 ${branchSuffix || 'main'} tag 失败: ${error}`);
     return null;
@@ -245,7 +247,7 @@ async function isAlphaVersionSealed(alphaVersion: string): Promise<boolean> {
 
     try {
       let stdout = '';
-      await exec('git', ['tag', '-l', `${baseVersion}-beta.*`], {
+      await exec('git', ['tag', '-l', `v${baseVersion}-beta.*`], {
         listeners: {
           stdout: (data: Buffer) => {
             stdout += data.toString();
@@ -557,13 +559,14 @@ async function updateVersionAndCreateTag(newVersion: string, targetBranch: Suppo
   await exec('git', ['add', '.']);
   await exec('git', ['commit', '-m', COMMIT_TEMPLATES.VERSION_BUMP(newVersion, targetBranch)]);
 
-  // 创建版本标签
-  await exec('git', ['tag', newVersion]);
-  logger.info(`已创建标签: ${newVersion}`);
+  // 创建版本标签（添加 v 前缀以符合 conventional commits 规范）
+  const tagName = `v${newVersion}`;
+  await exec('git', ['tag', tagName]);
+  logger.info(`已创建标签: ${tagName}`);
 
   // 推送更改和标签
   await exec('git', ['push', 'origin', targetBranch]);
-  await exec('git', ['push', 'origin', newVersion]);
+  await exec('git', ['push', 'origin', tagName]);
 
   // 在打tag后更新 CHANGELOG
   await updateChangelog(newVersion);
