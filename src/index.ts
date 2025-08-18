@@ -391,6 +391,20 @@ async function createVersionPreviewComment(
 
 // ==================== 版本计算 ====================
 
+// 判断当前版本隐含的最高标签级别
+function getCurrentVersionLevel(parsed: semver.SemVer): 'major' | 'minor' | 'patch' {
+  if (parsed.major > 0) return 'major';
+  if (parsed.minor > 0) return 'minor';
+  return 'patch';
+}
+
+// 判断新标签的级别
+function getReleaseLevel(release: ReleaseType): 'major' | 'minor' | 'patch' {
+  if (release === 'premajor') return 'major';
+  if (release === 'preminor') return 'minor';
+  return 'patch';
+}
+
 /**
  * 根据 PR 标签确定版本发布类型
  */
@@ -455,16 +469,44 @@ async function calculateNewVersion(
       return newVersion ? `v${newVersion}` : null;
     }
 
-    // 根据 releaseType 决定是升级版本还是递增 prerelease
+    // 根据 releaseType 决定版本升级策略 - 保持高版本原则
     if (releaseType && releaseType !== 'prerelease') {
-      // 有明确的版本升级类型，但在未封版状态下只递增 prerelease
-      // 只有封版后才会根据标签升级到新的版本号
-      logger.info(`检测到 ${releaseType} 变更，但当前版本未封版，递增 prerelease 版本号`);
-      const newVersion = semver.inc(currentVersion, 'prerelease', 'alpha');
-      return newVersion ? `v${newVersion}` : null;
+      const currentParsed = semver.parse(currentVersion);
+      if (!currentParsed) {
+        logger.error(`无法解析当前版本: ${currentVersion}`);
+        return null;
+      }
+
+      
+
+      // 标签级别优先级 (数字越大优先级越高)
+      const levelPriority = { patch: 1, minor: 2, major: 3 };
+
+      const currentLevel = getCurrentVersionLevel(currentParsed);
+      const newLevel = getReleaseLevel(releaseType);
+      const currentBase = `${currentParsed.major}.${currentParsed.minor}.${currentParsed.patch}`;
+
+      logger.info(`版本级别比较: 当前 ${currentLevel}(${currentBase}) vs 新标签 ${newLevel}`);
+
+      if (levelPriority[newLevel] > levelPriority[currentLevel]) {
+        // 新标签级别更高，升级版本
+        logger.info(`${newLevel} 标签级别高于当前 ${currentLevel}，升级版本`);
+        const newVersion = semver.inc(currentVersion, releaseType, 'alpha');
+        return newVersion ? `v${newVersion}` : null;
+      } else if (levelPriority[newLevel] === levelPriority[currentLevel]) {
+        // 同级别，递增 prerelease
+        logger.info(`${newLevel} 标签与当前 ${currentLevel} 同级别，递增 prerelease`);
+        const incrementedVersion = semver.inc(currentVersion, 'prerelease', 'alpha');
+        return incrementedVersion ? `v${incrementedVersion}` : null;
+      } else {
+        // 新标签级别更低，保持高版本，只递增 prerelease
+        logger.info(`${newLevel} 标签级别低于当前 ${currentLevel}，保持高版本，递增 prerelease`);
+        const incrementedVersion = semver.inc(currentVersion, 'prerelease', 'alpha');
+        return incrementedVersion ? `v${incrementedVersion}` : null;
+      }
     } else {
       // 没有版本升级标签，跳过版本更新
-      logger.info(`当前 alpha 版本 (${currentTag}) 未封版且无版本标签，跳过版本更新`);
+      logger.info(`当前 alpha 版本 (${currentTag}) 无版本标签，跳过版本更新`);
       return null;
     }
   }
@@ -581,10 +623,27 @@ async function updateVersionAndCreateTag(newVersion: string, targetBranch: Suppo
 
   // 检查是否有 CHANGELOG 更改需要提交
   try {
+    // 首先检查 CHANGELOG.md 是否存在
+    let changelogExists = false;
+    try {
+      await exec('test', ['-f', 'CHANGELOG.md']);
+      changelogExists = true;
+    } catch {
+      // 文件不存在
+      changelogExists = false;
+    }
+
+    if (!changelogExists) {
+      logger.info('CHANGELOG.md 文件不存在，跳过提交检查');
+      return;
+    }
+
     // 检查是否有 CHANGELOG 文件更改
     let hasChanges = false;
     try {
       await exec('git', ['diff', '--exit-code', 'CHANGELOG.md']);
+      // 如果没有抛出异常，说明没有更改
+      hasChanges = false;
     } catch {
       // 如果 git diff 返回非零退出码，说明有更改
       hasChanges = true;
@@ -754,6 +813,24 @@ async function run(): Promise<void> {
 
     if (!releaseType) {
       logger.warning('版本升级类型为空, 跳过');
+      
+      // 如果是预览模式，更新 PR 评论显示跳过信息
+      if (isDryRun) {
+        const prNumber = pr?.number || context.payload.pull_request?.number;
+        if (prNumber) {
+          const skipComment = `## ⏭️ 版本管理跳过
+
+| 项目 | 值 |
+|------|-----|
+| **目标分支** | \`${targetBranch}\` |
+| **当前版本** | \`${versionInfo.currentTag || '无'}\` |
+| **状态** | \`跳过 - 无版本标签\` |
+
+> ℹ️ 没有检测到版本标签（major/minor/patch），跳过版本更新。`;
+          await updatePRComment(prNumber, skipComment, '## ⏭️ 版本管理跳过');
+        }
+      }
+      
       return;
     }
 
