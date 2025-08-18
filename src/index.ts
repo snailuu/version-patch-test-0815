@@ -440,7 +440,7 @@ function getReleaseTypeFromLabel(labels: { name: string }[] = []): ReleaseType |
 async function calculateNewVersion(
   targetBranch: SupportedBranch,
   versionInfo: VersionInfo,
-  releaseType: ReleaseType,
+  releaseType: ReleaseType | '',
 ): Promise<string | null> {
   const { beta, currentTag, betaTag } = versionInfo;
 
@@ -448,7 +448,7 @@ async function calculateNewVersion(
     if (!currentTag) {
       logger.info('没有找到 alpha tag，创建第一个 alpha 版本');
       const baseVersion = betaTag ? betaTag.replace(/^v/, '') : DEFAULT_VERSIONS.base;
-      const newVersion = semver.inc(baseVersion, releaseType, 'alpha');
+      const newVersion = releaseType ? semver.inc(baseVersion, releaseType, 'alpha') : null;
       return newVersion ? `v${newVersion}` : null;
     }
 
@@ -457,7 +457,7 @@ async function calculateNewVersion(
     const lastSemver = semver.parse(currentVersion);
     if (lastSemver && (!lastSemver.prerelease || lastSemver.prerelease[0] !== 'alpha')) {
       logger.info(`上一个版本 (${currentTag}) 来自 beta 或 main, 需要提升版本。`);
-      const newVersion = semver.inc(currentVersion, releaseType, 'alpha');
+      const newVersion = releaseType ? semver.inc(currentVersion, releaseType, 'alpha') : null;
       return newVersion ? `v${newVersion}` : null;
     }
 
@@ -465,7 +465,7 @@ async function calculateNewVersion(
     if (isSealed) {
       logger.info(`当前 alpha 版本 (${currentTag}) 已封版，重新计数。`);
       const betaVersion = betaTag ? betaTag.replace(/^v/, '') : DEFAULT_VERSIONS.beta;
-      const newVersion = semver.inc(betaVersion, releaseType, 'alpha');
+      const newVersion = releaseType ? semver.inc(betaVersion, releaseType, 'alpha') : null;
       return newVersion ? `v${newVersion}` : null;
     }
 
@@ -483,7 +483,7 @@ async function calculateNewVersion(
       const levelPriority = { patch: 1, minor: 2, major: 3 };
 
       const currentLevel = getCurrentVersionLevel(currentParsed);
-      const newLevel = getReleaseLevel(releaseType);
+      const newLevel = releaseType ? getReleaseLevel(releaseType) : 'patch'; // 默认使用 patch 级别
       const currentBase = `${currentParsed.major}.${currentParsed.minor}.${currentParsed.patch}`;
 
       logger.info(`版本级别比较: 当前 ${currentLevel}(${currentBase}) vs 新标签 ${newLevel}`);
@@ -491,7 +491,7 @@ async function calculateNewVersion(
       if (levelPriority[newLevel] > levelPriority[currentLevel]) {
         // 新标签级别更高，升级版本
         logger.info(`${newLevel} 标签级别高于当前 ${currentLevel}，升级版本`);
-        const newVersion = semver.inc(currentVersion, releaseType, 'alpha');
+        const newVersion = releaseType ? semver.inc(currentVersion, releaseType, 'alpha') : null;
         return newVersion ? `v${newVersion}` : null;
       } else if (levelPriority[newLevel] === levelPriority[currentLevel]) {
         // 同级别，递增 prerelease
@@ -512,9 +512,31 @@ async function calculateNewVersion(
   }
 
   if (targetBranch === 'beta') {
-    const baseVersion = betaTag ? betaTag.replace(/^v/, '') : DEFAULT_VERSIONS.beta;
-    const newVersion = semver.inc(baseVersion, 'prerelease', 'beta');
-    return newVersion ? `v${newVersion}` : null;
+    // 获取最新的 alpha 版本
+    const alphaTagVersion = await getLatestTagVersion('alpha');
+    
+    if (!alphaTagVersion) {
+      logger.warning('没有找到 alpha 版本，使用默认 beta 版本');
+      const baseVersion = betaTag ? betaTag.replace(/^v/, '') : DEFAULT_VERSIONS.beta;
+      const newVersion = semver.inc(baseVersion, 'prerelease', 'beta');
+      return newVersion ? `v${newVersion}` : null;
+    }
+    
+    // 将 alpha 版本转换为 beta 版本
+    const alphaVersion = alphaTagVersion.replace(/^v/, '');
+    const alphaParsed = semver.parse(alphaVersion);
+    
+    if (!alphaParsed || !alphaParsed.prerelease || alphaParsed.prerelease[0] !== 'alpha') {
+      logger.error(`无效的 alpha 版本格式: ${alphaVersion}`);
+      return null;
+    }
+    
+    // 构建新的 beta 版本：使用 alpha 的基础版本号，但改为 beta.0
+    const baseVersion = `${alphaParsed.major}.${alphaParsed.minor}.${alphaParsed.patch}`;
+    const newVersion = `${baseVersion}-beta.0`;
+    
+    logger.info(`从 alpha 版本 ${alphaTagVersion} 生成 beta 版本 v${newVersion}`);
+    return `v${newVersion}`;
   }
 
   if (targetBranch === 'main') {
@@ -831,7 +853,8 @@ async function run(): Promise<void> {
     const releaseType = getReleaseTypeFromLabel(pr?.labels);
     logger.info(`版本升级类型: ${releaseType}`);
 
-    if (!releaseType) {
+    // beta 分支不依赖标签，直接基于 alpha 版本生成
+    if (!releaseType && targetBranch !== 'beta') {
       logger.warning('版本升级类型为空, 跳过');
       
       // 如果是预览模式，更新 PR 评论显示跳过信息
@@ -852,6 +875,11 @@ async function run(): Promise<void> {
       }
       
       return;
+    }
+
+    // beta 分支的特殊处理
+    if (targetBranch === 'beta' && !releaseType) {
+      logger.info('beta 分支不依赖标签，直接基于 alpha 版本生成');
     }
 
     // 计算新版本号
