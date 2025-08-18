@@ -73,6 +73,7 @@ jobs:
           path: dist
 
       - name: Version patch
+        id: version-patch
         uses: ./
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

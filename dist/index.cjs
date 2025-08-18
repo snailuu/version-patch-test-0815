@@ -28302,6 +28302,36 @@ async function calculateNewVersion(targetBranch, versionInfo, releaseType) {
   }
   return null;
 }
+async function updateChangelog(newVersion) {
+  try {
+    logger.info("\u5F00\u59CB\u751F\u6210 CHANGELOG...");
+    await (0, import_exec.exec)("npx", [
+      "conventional-changelog-cli",
+      "-p",
+      "conventionalcommits",
+      "-i",
+      "CHANGELOG.md",
+      "-s"
+    ]);
+    logger.info("CHANGELOG \u751F\u6210\u5B8C\u6210");
+  } catch (error2) {
+    logger.warning(`CHANGELOG \u751F\u6210\u5931\u8D25\uFF0C\u5C1D\u8BD5\u5B89\u88C5\u4F9D\u8D56: ${error2}`);
+    try {
+      await (0, import_exec.exec)("npm", ["install", "-g", "conventional-changelog-cli", "conventional-changelog-conventionalcommits"]);
+      await (0, import_exec.exec)("npx", [
+        "conventional-changelog-cli",
+        "-p",
+        "conventionalcommits",
+        "-i",
+        "CHANGELOG.md",
+        "-s"
+      ]);
+      logger.info("CHANGELOG \u751F\u6210\u5B8C\u6210\uFF08\u5DF2\u5B89\u88C5\u4F9D\u8D56\uFF09");
+    } catch (retryError) {
+      logger.warning(`CHANGELOG \u751F\u6210\u6700\u7EC8\u5931\u8D25: ${retryError}`);
+    }
+  }
+}
 async function updateVersionAndCreateTag(newVersion, targetBranch) {
   logger.info("\u5F00\u59CB\u6267\u884C\u7248\u672C\u66F4\u65B0...");
   await (0, import_exec.exec)("git", ["switch", targetBranch]);
@@ -28316,6 +28346,25 @@ async function updateVersionAndCreateTag(newVersion, targetBranch) {
   logger.info(`\u5DF2\u521B\u5EFA\u6807\u7B7E: ${newVersion}`);
   await (0, import_exec.exec)("git", ["push", "origin", targetBranch]);
   await (0, import_exec.exec)("git", ["push", "origin", newVersion]);
+  await updateChangelog(newVersion);
+  try {
+    let hasChanges = false;
+    try {
+      await (0, import_exec.exec)("git", ["diff", "--exit-code", "CHANGELOG.md"]);
+    } catch {
+      hasChanges = true;
+    }
+    if (hasChanges) {
+      await (0, import_exec.exec)("git", ["add", "CHANGELOG.md"]);
+      await (0, import_exec.exec)("git", ["commit", "-m", `docs: update CHANGELOG for v${newVersion}`]);
+      await (0, import_exec.exec)("git", ["push", "origin", targetBranch]);
+      logger.info("CHANGELOG \u66F4\u65B0\u5DF2\u63D0\u4EA4\u5E76\u63A8\u9001");
+    } else {
+      logger.info("CHANGELOG \u65E0\u66F4\u6539\uFF0C\u8DF3\u8FC7\u63D0\u4EA4");
+    }
+  } catch (error2) {
+    logger.warning(`CHANGELOG \u63D0\u4EA4\u5931\u8D25: ${error2}`);
+  }
 }
 async function syncBranches(targetBranch, newVersion) {
   if (targetBranch === "beta") {

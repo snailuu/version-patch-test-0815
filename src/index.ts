@@ -468,6 +468,46 @@ async function calculateNewVersion(
 // ==================== Git 操作 ====================
 
 /**
+ * 更新 CHANGELOG
+ */
+async function updateChangelog(newVersion: string): Promise<void> {
+  try {
+    logger.info('开始生成 CHANGELOG...');
+    
+    // 使用 npx 确保能找到包，即使没有全局安装
+    await exec('npx', [
+      'conventional-changelog-cli',
+      '-p', 'conventionalcommits',
+      '-i', 'CHANGELOG.md',
+      '-s'
+    ]);
+    
+    logger.info('CHANGELOG 生成完成');
+  } catch (error) {
+    // 如果 conventional-changelog-cli 不存在，尝试安装后再执行
+    logger.warning(`CHANGELOG 生成失败，尝试安装依赖: ${error}`);
+    
+    try {
+      // 临时安装 conventional-changelog-cli
+      await exec('npm', ['install', '-g', 'conventional-changelog-cli', 'conventional-changelog-conventionalcommits']);
+      
+      // 重新尝试生成
+      await exec('npx', [
+        'conventional-changelog-cli',
+        '-p', 'conventionalcommits', 
+        '-i', 'CHANGELOG.md',
+        '-s'
+      ]);
+      
+      logger.info('CHANGELOG 生成完成（已安装依赖）');
+    } catch (retryError) {
+      logger.warning(`CHANGELOG 生成最终失败: ${retryError}`);
+      // 不阻塞主流程，继续执行
+    }
+  }
+}
+
+/**
  * 更新版本并创建标签
  */
 async function updateVersionAndCreateTag(newVersion: string, targetBranch: SupportedBranch): Promise<void> {
@@ -493,6 +533,32 @@ async function updateVersionAndCreateTag(newVersion: string, targetBranch: Suppo
   // 推送更改和标签
   await exec('git', ['push', 'origin', targetBranch]);
   await exec('git', ['push', 'origin', newVersion]);
+
+  // 🎯 在打tag后更新 CHANGELOG
+  await updateChangelog(newVersion);
+
+  // 检查是否有 CHANGELOG 更改需要提交
+  try {
+    // 检查是否有 CHANGELOG 文件更改
+    let hasChanges = false;
+    try {
+      await exec('git', ['diff', '--exit-code', 'CHANGELOG.md']);
+    } catch {
+      // 如果 git diff 返回非零退出码，说明有更改
+      hasChanges = true;
+    }
+
+    if (hasChanges) {
+      await exec('git', ['add', 'CHANGELOG.md']);
+      await exec('git', ['commit', '-m', `docs: update CHANGELOG for v${newVersion}`]);
+      await exec('git', ['push', 'origin', targetBranch]);
+      logger.info('CHANGELOG 更新已提交并推送');
+    } else {
+      logger.info('CHANGELOG 无更改，跳过提交');
+    }
+  } catch (error) {
+    logger.warning(`CHANGELOG 提交失败: ${error}`);
+  }
 }
 
 /**
