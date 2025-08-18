@@ -641,12 +641,32 @@ async function updateVersionAndCreateTag(newVersion: string, targetBranch: Suppo
     // 检查是否有 CHANGELOG 文件更改
     let hasChanges = false;
     try {
-      await exec('git', ['diff', '--exit-code', 'CHANGELOG.md']);
-      // 如果没有抛出异常，说明没有更改
+      // 首先检查文件是否未被跟踪（新文件）
+      let stdout = '';
+      await exec('git', ['status', '--porcelain', 'CHANGELOG.md'], {
+        listeners: {
+          stdout: (data: Buffer) => {
+            stdout += data.toString();
+          },
+        },
+      });
+      
+      // 如果有输出，说明文件有变化（新文件或修改文件）
+      if (stdout.trim().length > 0) {
+        hasChanges = true;
+        logger.info(`检测到 CHANGELOG.md 变化: ${stdout.trim()}`);
+      } else {
+        // 如果 git status 无输出，再用 git diff 检查已跟踪文件的变化
+        try {
+          await exec('git', ['diff', '--exit-code', 'CHANGELOG.md']);
+          hasChanges = false;
+        } catch {
+          hasChanges = true;
+        }
+      }
+    } catch (error) {
+      logger.warning(`检查 CHANGELOG 变化失败: ${error}`);
       hasChanges = false;
-    } catch {
-      // 如果 git diff 返回非零退出码，说明有更改
-      hasChanges = true;
     }
 
     if (hasChanges) {
