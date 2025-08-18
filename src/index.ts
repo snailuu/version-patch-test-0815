@@ -581,10 +581,27 @@ async function updateVersionAndCreateTag(newVersion: string, targetBranch: Suppo
 
   // 检查是否有 CHANGELOG 更改需要提交
   try {
+    // 首先检查 CHANGELOG.md 是否存在
+    let changelogExists = false;
+    try {
+      await exec('test', ['-f', 'CHANGELOG.md']);
+      changelogExists = true;
+    } catch {
+      // 文件不存在
+      changelogExists = false;
+    }
+
+    if (!changelogExists) {
+      logger.info('CHANGELOG.md 文件不存在，跳过提交检查');
+      return;
+    }
+
     // 检查是否有 CHANGELOG 文件更改
     let hasChanges = false;
     try {
       await exec('git', ['diff', '--exit-code', 'CHANGELOG.md']);
+      // 如果没有抛出异常，说明没有更改
+      hasChanges = false;
     } catch {
       // 如果 git diff 返回非零退出码，说明有更改
       hasChanges = true;
