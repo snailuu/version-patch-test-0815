@@ -28105,7 +28105,7 @@ async function getCurrentPR() {
 async function getLatestTagVersion(branchSuffix = "") {
   try {
     let stdout = "";
-    const pattern = branchSuffix ? `*-${branchSuffix}.*` : "*";
+    const pattern = branchSuffix ? `v*-${branchSuffix}.*` : "v*";
     await (0, import_exec.exec)("git", ["tag", "-l", pattern, "--sort=-version:refname"], {
       listeners: {
         stdout: (data) => {
@@ -28150,7 +28150,7 @@ async function isAlphaVersionSealed(alphaVersion) {
     const baseVersion = `${parsed.major}.${parsed.minor}.${parsed.patch}`;
     try {
       let stdout = "";
-      await (0, import_exec.exec)("git", ["tag", "-l", `${baseVersion}-beta.*`], {
+      await (0, import_exec.exec)("git", ["tag", "-l", `v${baseVersion}-beta.*`], {
         listeners: {
           stdout: (data) => {
             stdout += data.toString();
@@ -28276,34 +28276,42 @@ async function calculateNewVersion(targetBranch, versionInfo, releaseType) {
   if (targetBranch === "alpha") {
     if (!currentTag) {
       logger.info("\u6CA1\u6709\u627E\u5230 alpha tag\uFF0C\u521B\u5EFA\u7B2C\u4E00\u4E2A alpha \u7248\u672C");
-      const baseVersion = betaTag || DEFAULT_VERSIONS.base;
-      return import_semver.default.inc(baseVersion, releaseType, "alpha");
+      const baseVersion = betaTag ? betaTag.replace(/^v/, "") : DEFAULT_VERSIONS.base;
+      const newVersion = import_semver.default.inc(baseVersion, releaseType, "alpha");
+      return newVersion ? `v${newVersion}` : null;
     }
-    const lastSemver = import_semver.default.parse(currentTag);
+    const currentVersion = currentTag.replace(/^v/, "");
+    const lastSemver = import_semver.default.parse(currentVersion);
     if (lastSemver && (!lastSemver.prerelease || lastSemver.prerelease[0] !== "alpha")) {
       logger.info(`\u4E0A\u4E00\u4E2A\u7248\u672C (${currentTag}) \u6765\u81EA beta \u6216 main, \u9700\u8981\u63D0\u5347\u7248\u672C\u3002`);
-      return import_semver.default.inc(currentTag, releaseType, "alpha");
+      const newVersion = import_semver.default.inc(currentVersion, releaseType, "alpha");
+      return newVersion ? `v${newVersion}` : null;
     }
-    const isSealed = await isAlphaVersionSealed(currentTag);
+    const isSealed = await isAlphaVersionSealed(currentVersion);
     if (isSealed) {
       logger.info(`\u5F53\u524D alpha \u7248\u672C (${currentTag}) \u5DF2\u5C01\u7248\uFF0C\u91CD\u65B0\u8BA1\u6570\u3002`);
-      return import_semver.default.inc(beta, releaseType, "alpha");
+      const betaVersion = betaTag ? betaTag.replace(/^v/, "") : DEFAULT_VERSIONS.beta;
+      const newVersion = import_semver.default.inc(betaVersion, releaseType, "alpha");
+      return newVersion ? `v${newVersion}` : null;
     }
     if (releaseType && releaseType !== "prerelease") {
       logger.info(`\u68C0\u6D4B\u5230 ${releaseType} \u53D8\u66F4\uFF0C\u4F46\u5F53\u524D\u7248\u672C\u672A\u5C01\u7248\uFF0C\u9012\u589E prerelease \u7248\u672C\u53F7`);
-      return import_semver.default.inc(currentTag, "prerelease", "alpha");
+      const newVersion = import_semver.default.inc(currentVersion, "prerelease", "alpha");
+      return newVersion ? `v${newVersion}` : null;
     } else {
       logger.info(`\u5F53\u524D alpha \u7248\u672C (${currentTag}) \u672A\u5C01\u7248\u4E14\u65E0\u7248\u672C\u6807\u7B7E\uFF0C\u8DF3\u8FC7\u7248\u672C\u66F4\u65B0`);
       return null;
     }
   }
   if (targetBranch === "beta") {
-    const baseVersion = betaTag || DEFAULT_VERSIONS.beta;
-    return import_semver.default.inc(baseVersion, "prerelease", "beta");
+    const baseVersion = betaTag ? betaTag.replace(/^v/, "") : DEFAULT_VERSIONS.beta;
+    const newVersion = import_semver.default.inc(baseVersion, "prerelease", "beta");
+    return newVersion ? `v${newVersion}` : null;
   }
   if (targetBranch === "main") {
-    const baseVersion = currentTag || DEFAULT_VERSIONS.base;
-    return import_semver.default.inc(baseVersion, "patch");
+    const baseVersion = currentTag ? currentTag.replace(/^v/, "") : DEFAULT_VERSIONS.base;
+    const newVersion = import_semver.default.inc(baseVersion, "patch");
+    return newVersion ? `v${newVersion}` : null;
   }
   return null;
 }
@@ -28363,18 +28371,19 @@ async function updateChangelog(newVersion) {
 async function updateVersionAndCreateTag(newVersion, targetBranch) {
   logger.info("\u5F00\u59CB\u6267\u884C\u7248\u672C\u66F4\u65B0...");
   await (0, import_exec.exec)("git", ["switch", targetBranch]);
+  const packageVersion = newVersion.replace(/^v/, "");
   const pkgPath = await resolvePackageJSON();
   const pkgInfo = await readPackageJSON(pkgPath);
-  pkgInfo.version = newVersion;
+  pkgInfo.version = packageVersion;
   await writePackageJSON(pkgPath, pkgInfo);
   logger.info("\u7248\u672C\u6587\u4EF6\u5DF2\u66F4\u65B0");
   await (0, import_exec.exec)("git", ["add", "."]);
-  await (0, import_exec.exec)("git", ["commit", "-m", COMMIT_TEMPLATES.VERSION_BUMP(newVersion, targetBranch)]);
+  await (0, import_exec.exec)("git", ["commit", "-m", COMMIT_TEMPLATES.VERSION_BUMP(packageVersion, targetBranch)]);
   await (0, import_exec.exec)("git", ["tag", newVersion]);
   logger.info(`\u5DF2\u521B\u5EFA\u6807\u7B7E: ${newVersion}`);
   await (0, import_exec.exec)("git", ["push", "origin", targetBranch]);
   await (0, import_exec.exec)("git", ["push", "origin", newVersion]);
-  await updateChangelog(newVersion);
+  await updateChangelog(packageVersion);
   try {
     let hasChanges = false;
     try {
@@ -28384,7 +28393,7 @@ async function updateVersionAndCreateTag(newVersion, targetBranch) {
     }
     if (hasChanges) {
       await (0, import_exec.exec)("git", ["add", "CHANGELOG.md"]);
-      await (0, import_exec.exec)("git", ["commit", "-m", `docs: update CHANGELOG for v${newVersion}`]);
+      await (0, import_exec.exec)("git", ["commit", "-m", `docs: update CHANGELOG for ${newVersion}`]);
       await (0, import_exec.exec)("git", ["push", "origin", targetBranch]);
       logger.info("CHANGELOG \u66F4\u65B0\u5DF2\u63D0\u4EA4\u5E76\u63A8\u9001");
     } else {
