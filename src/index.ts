@@ -448,8 +448,17 @@ async function calculateNewVersion(
       return semver.inc(beta, releaseType, 'alpha');
     }
 
-    logger.info(`当前 alpha 版本 (${currentTag}) 未封版，递增预发布版本号。`);
-    return semver.inc(currentTag, 'prerelease', 'alpha');
+    // 根据 releaseType 决定是升级版本还是递增 prerelease
+    if (releaseType && releaseType !== 'prerelease') {
+      // 有明确的版本升级类型，但在未封版状态下只递增 prerelease
+      // 只有封版后才会根据标签升级到新的版本号
+      logger.info(`检测到 ${releaseType} 变更，但当前版本未封版，递增 prerelease 版本号`);
+      return semver.inc(currentTag, 'prerelease', 'alpha');
+    } else {
+      // 没有版本升级标签，跳过版本更新
+      logger.info(`当前 alpha 版本 (${currentTag}) 未封版且无版本标签，跳过版本更新`);
+      return null;
+    }
   }
 
   if (targetBranch === 'beta') {
@@ -474,13 +483,34 @@ async function updateChangelog(newVersion: string): Promise<void> {
   try {
     logger.info('开始生成 CHANGELOG...');
     
-    // 使用 npx 确保能找到包，即使没有全局安装
-    await exec('npx', [
-      'conventional-changelog-cli',
-      '-p', 'conventionalcommits',
-      '-i', 'CHANGELOG.md',
-      '-s'
-    ]);
+    // 检查 CHANGELOG.md 是否存在，如果不存在则创建初始版本
+    try {
+      await exec('ls', ['CHANGELOG.md']);
+      logger.info('CHANGELOG.md 已存在，增量更新');
+    } catch {
+      logger.info('CHANGELOG.md 不存在，创建初始版本');
+      // 创建初始 CHANGELOG，包含所有历史
+      await exec('npx', [
+        'conventional-changelog-cli',
+        '-p', 'conventionalcommits',
+        '-i', 'CHANGELOG.md',
+        '-s',
+        '-r', '0'  // 包含所有发布记录
+      ]);
+    }
+    
+    // 如果上面的步骤没有创建文件，使用标准增量更新
+    try {
+      await exec('ls', ['CHANGELOG.md']);
+    } catch {
+      // 使用 npx 确保能找到包，即使没有全局安装
+      await exec('npx', [
+        'conventional-changelog-cli',
+        '-p', 'conventionalcommits',
+        '-i', 'CHANGELOG.md',
+        '-s'
+      ]);
+    }
     
     logger.info('CHANGELOG 生成完成');
   } catch (error) {
@@ -491,12 +521,13 @@ async function updateChangelog(newVersion: string): Promise<void> {
       // 临时安装 conventional-changelog-cli
       await exec('npm', ['install', '-g', 'conventional-changelog-cli', 'conventional-changelog-conventionalcommits']);
       
-      // 重新尝试生成
+      // 重新尝试生成（包含所有历史）
       await exec('npx', [
         'conventional-changelog-cli',
         '-p', 'conventionalcommits', 
         '-i', 'CHANGELOG.md',
-        '-s'
+        '-s',
+        '-r', '0'
       ]);
       
       logger.info('CHANGELOG 生成完成（已安装依赖）');
@@ -534,7 +565,7 @@ async function updateVersionAndCreateTag(newVersion: string, targetBranch: Suppo
   await exec('git', ['push', 'origin', targetBranch]);
   await exec('git', ['push', 'origin', newVersion]);
 
-  // 🎯 在打tag后更新 CHANGELOG
+  // 在打tag后更新 CHANGELOG
   await updateChangelog(newVersion);
 
   // 检查是否有 CHANGELOG 更改需要提交
