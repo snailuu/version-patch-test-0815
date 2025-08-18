@@ -28287,21 +28287,21 @@ async function calculateNewVersion(targetBranch, versionInfo, releaseType) {
     if (!currentTag) {
       logger.info("\u6CA1\u6709\u627E\u5230 alpha tag\uFF0C\u521B\u5EFA\u7B2C\u4E00\u4E2A alpha \u7248\u672C");
       const baseVersion = betaTag ? betaTag.replace(/^v/, "") : DEFAULT_VERSIONS.base;
-      const newVersion = import_semver.default.inc(baseVersion, releaseType, "alpha");
+      const newVersion = releaseType ? import_semver.default.inc(baseVersion, releaseType, "alpha") : null;
       return newVersion ? `v${newVersion}` : null;
     }
     const currentVersion = currentTag.replace(/^v/, "");
     const lastSemver = import_semver.default.parse(currentVersion);
     if (lastSemver && (!lastSemver.prerelease || lastSemver.prerelease[0] !== "alpha")) {
       logger.info(`\u4E0A\u4E00\u4E2A\u7248\u672C (${currentTag}) \u6765\u81EA beta \u6216 main, \u9700\u8981\u63D0\u5347\u7248\u672C\u3002`);
-      const newVersion = import_semver.default.inc(currentVersion, releaseType, "alpha");
+      const newVersion = releaseType ? import_semver.default.inc(currentVersion, releaseType, "alpha") : null;
       return newVersion ? `v${newVersion}` : null;
     }
     const isSealed = await isAlphaVersionSealed(currentVersion);
     if (isSealed) {
       logger.info(`\u5F53\u524D alpha \u7248\u672C (${currentTag}) \u5DF2\u5C01\u7248\uFF0C\u91CD\u65B0\u8BA1\u6570\u3002`);
       const betaVersion = betaTag ? betaTag.replace(/^v/, "") : DEFAULT_VERSIONS.beta;
-      const newVersion = import_semver.default.inc(betaVersion, releaseType, "alpha");
+      const newVersion = releaseType ? import_semver.default.inc(betaVersion, releaseType, "alpha") : null;
       return newVersion ? `v${newVersion}` : null;
     }
     if (releaseType && releaseType !== "prerelease") {
@@ -28312,12 +28312,12 @@ async function calculateNewVersion(targetBranch, versionInfo, releaseType) {
       }
       const levelPriority = { patch: 1, minor: 2, major: 3 };
       const currentLevel = getCurrentVersionLevel(currentParsed);
-      const newLevel = getReleaseLevel(releaseType);
+      const newLevel = releaseType ? getReleaseLevel(releaseType) : "patch";
       const currentBase = `${currentParsed.major}.${currentParsed.minor}.${currentParsed.patch}`;
       logger.info(`\u7248\u672C\u7EA7\u522B\u6BD4\u8F83: \u5F53\u524D ${currentLevel}(${currentBase}) vs \u65B0\u6807\u7B7E ${newLevel}`);
       if (levelPriority[newLevel] > levelPriority[currentLevel]) {
         logger.info(`${newLevel} \u6807\u7B7E\u7EA7\u522B\u9AD8\u4E8E\u5F53\u524D ${currentLevel}\uFF0C\u5347\u7EA7\u7248\u672C`);
-        const newVersion = import_semver.default.inc(currentVersion, releaseType, "alpha");
+        const newVersion = releaseType ? import_semver.default.inc(currentVersion, releaseType, "alpha") : null;
         return newVersion ? `v${newVersion}` : null;
       } else if (levelPriority[newLevel] === levelPriority[currentLevel]) {
         logger.info(`${newLevel} \u6807\u7B7E\u4E0E\u5F53\u524D ${currentLevel} \u540C\u7EA7\u522B\uFF0C\u9012\u589E prerelease`);
@@ -28334,9 +28334,23 @@ async function calculateNewVersion(targetBranch, versionInfo, releaseType) {
     }
   }
   if (targetBranch === "beta") {
-    const baseVersion = betaTag ? betaTag.replace(/^v/, "") : DEFAULT_VERSIONS.beta;
-    const newVersion = import_semver.default.inc(baseVersion, "prerelease", "beta");
-    return newVersion ? `v${newVersion}` : null;
+    const alphaTagVersion = await getLatestTagVersion("alpha");
+    if (!alphaTagVersion) {
+      logger.warning("\u6CA1\u6709\u627E\u5230 alpha \u7248\u672C\uFF0C\u4F7F\u7528\u9ED8\u8BA4 beta \u7248\u672C");
+      const baseVersion2 = betaTag ? betaTag.replace(/^v/, "") : DEFAULT_VERSIONS.beta;
+      const newVersion2 = import_semver.default.inc(baseVersion2, "prerelease", "beta");
+      return newVersion2 ? `v${newVersion2}` : null;
+    }
+    const alphaVersion = alphaTagVersion.replace(/^v/, "");
+    const alphaParsed = import_semver.default.parse(alphaVersion);
+    if (!alphaParsed || !alphaParsed.prerelease || alphaParsed.prerelease[0] !== "alpha") {
+      logger.error(`\u65E0\u6548\u7684 alpha \u7248\u672C\u683C\u5F0F: ${alphaVersion}`);
+      return null;
+    }
+    const baseVersion = `${alphaParsed.major}.${alphaParsed.minor}.${alphaParsed.patch}`;
+    const newVersion = `${baseVersion}-beta.0`;
+    logger.info(`\u4ECE alpha \u7248\u672C ${alphaTagVersion} \u751F\u6210 beta \u7248\u672C v${newVersion}`);
+    return `v${newVersion}`;
   }
   if (targetBranch === "main") {
     const baseVersion = currentTag ? currentTag.replace(/^v/, "") : DEFAULT_VERSIONS.base;
@@ -28571,7 +28585,7 @@ async function run() {
     }
     const releaseType = getReleaseTypeFromLabel(pr == null ? void 0 : pr.labels);
     logger.info(`\u7248\u672C\u5347\u7EA7\u7C7B\u578B: ${releaseType}`);
-    if (!releaseType) {
+    if (!releaseType && targetBranch !== "beta") {
       logger.warning("\u7248\u672C\u5347\u7EA7\u7C7B\u578B\u4E3A\u7A7A, \u8DF3\u8FC7");
       if (isDryRun) {
         const prNumber = (pr == null ? void 0 : pr.number) || ((_b = import_github.context.payload.pull_request) == null ? void 0 : _b.number);
@@ -28589,6 +28603,9 @@ async function run() {
         }
       }
       return;
+    }
+    if (targetBranch === "beta" && !releaseType) {
+      logger.info("beta \u5206\u652F\u4E0D\u4F9D\u8D56\u6807\u7B7E\uFF0C\u76F4\u63A5\u57FA\u4E8E alpha \u7248\u672C\u751F\u6210");
     }
     const newVersion = await calculateNewVersion(targetBranch, versionInfo, releaseType);
     logger.info(`${isDryRun ? "\u9884\u89C8" : "\u65B0"}\u7248\u672C: ${newVersion}`);
