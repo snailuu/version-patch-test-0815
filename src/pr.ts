@@ -328,8 +328,8 @@ export async function createErrorComment(prNumber: number, errorMessage: string)
 }
 
 /**
- * 混合策略：确定版本升级类型 - 针对merge阶段优化
- * 优先级：PR标签 > commit分析 > 智能推断
+ * 简化策略：确定版本升级类型 - 专门为merge触发优化
+ * 优先级：PR标签 > 智能推断（merge时总是有PR信息，无需commit分析）
  */
 export async function determineReleaseType(
   pr: PRData | null,
@@ -337,7 +337,7 @@ export async function determineReleaseType(
 ): Promise<ReleaseType | ''> {
   logger.info(`🔍 开始确定版本升级类型 (PR: ${pr ? `#${pr.number}` : '无'}, 分支: ${targetBranch})`);
   
-  // 1. 优先使用PR标签（merge阶段和预览模式都有完整PR信息）
+  // 1. 优先使用PR标签（merge阶段总是有完整PR信息）
   if (pr?.labels && pr.labels.length > 0) {
     const labelReleaseType = PRUtils.getReleaseTypeFromLabels(pr.labels);
     if (labelReleaseType) {
@@ -348,18 +348,10 @@ export async function determineReleaseType(
       logger.info(`📝 PR #${pr.number} 有标签但无版本标签: [${labelNames}]`);
     }
   } else if (pr) {
-    logger.info(`📝 PR #${pr.number} 没有标签`);
+    logger.info(`📝 PR #${pr.number} 没有标签，使用智能推断`);
   }
   
-  // 2. 尝试从commit历史推断（兜底方案）
-  logger.info(`🔍 尝试从commit历史推断版本类型...`);
-  const commitReleaseType = await inferReleaseTypeFromCommits(targetBranch);
-  if (commitReleaseType) {
-    logger.info(`🤖 使用commit历史推断: ${commitReleaseType}`);
-    return commitReleaseType;
-  }
-  
-  // 3. 基于分支特性的智能推断（最后的兜底）
+  // 2. 基于分支特性的智能推断
   if (targetBranch === 'alpha') {
     logger.info(`🎯 Alpha分支智能推断: prepatch (默认patch升级)`);
     return 'prepatch';
@@ -435,75 +427,35 @@ function validateBranch(branch: string): boolean {
 }
 
 /**
- * 获取事件信息和目标分支 - 支持merge阶段触发
+ * 获取事件信息和目标分支 - 简化版，只处理PR事件
  */
 export async function getEventInfo(): Promise<{
   targetBranch: string;
   isDryRun: boolean;
   pr: PRData | null;
-  eventType: 'preview' | 'merge' | 'push';
+  eventType: 'preview' | 'merge';
 } | null> {
   try {
-    let targetBranch = '';
-    let isDryRun = false;
-    let pr: PRData | null = null;
-    let eventType: 'preview' | 'merge' | 'push' = 'push';
-
-    if (context.eventName === 'pull_request') {
-      const prPayload = context.payload.pull_request;
-      
-      if (!prPayload) {
-        logger.error('PR payload 不存在');
-        return null;
-      }
-
-      // 获取完整的PR信息
-      pr = await getCurrentPR();
-      if (!pr || !pr.base) {
-        logger.error('无法获取有效的 PR 信息');
-        return null;
-      }
-
-      targetBranch = pr.base.ref;
-
-      // 🎯 关键：检查是否是merge事件
-      if (prPayload.state === 'closed' && prPayload.merged === true) {
-        // PR刚刚被合并 - 这是执行版本管理的最佳时机
-        isDryRun = false;
-        eventType = 'merge';
-        logger.info(`🎯 PR #${pr.number} 已合并到 ${targetBranch} (Merge阶段触发)`);
-      } else {
-        // PR还未合并 - 预览模式
-        isDryRun = true;
-        eventType = 'preview';
-        logger.info(`👁️ PR #${pr.number} 预览模式，目标分支: ${targetBranch}`);
-      }
-      
-    } else if (context.eventName === 'push') {
-      // Push事件：作为兜底方案保留
-      targetBranch = context.ref.split('/').pop()!;
-      pr = await getRecentMergedPR(targetBranch);
-      isDryRun = false;
-      eventType = 'push';
-      
-      if (pr) {
-        logger.info(`🔄 Push事件，找到相关PR #${pr.number}，目标分支: ${targetBranch}`);
-      } else {
-        logger.info(`🔄 Push事件，未找到相关PR，将使用commit分析，目标分支: ${targetBranch}`);
-      }
-      
-    } else if (context.eventName === 'repository_dispatch') {
-      // 支持手动触发
-      const dispatchPayload = context.payload.client_payload as any;
-      targetBranch = dispatchPayload?.target_branch || 'main';
-      isDryRun = false;
-      eventType = 'push';
-      logger.info(`📡 手动触发事件，目标分支: ${targetBranch}`);
-      
-    } else {
-      logger.info(`❌ 不支持的事件类型: ${context.eventName}`);
+    // 只处理 pull_request 事件
+    if (context.eventName !== 'pull_request') {
+      logger.info(`❌ 只支持 pull_request 事件，当前事件: ${context.eventName}`);
       return null;
     }
+
+    const prPayload = context.payload.pull_request;
+    if (!prPayload) {
+      logger.error('PR payload 不存在');
+      return null;
+    }
+
+    // 获取完整的PR信息
+    const pr = await getCurrentPR();
+    if (!pr || !pr.base) {
+      logger.error('无法获取有效的 PR 信息');
+      return null;
+    }
+
+    const targetBranch = pr.base.ref;
 
     // 检查分支支持
     if (!validateBranch(targetBranch)) {
@@ -511,7 +463,27 @@ export async function getEventInfo(): Promise<{
       return null;
     }
 
-    return { targetBranch, isDryRun, pr, eventType };
+    // 🎯 核心逻辑：检查是否是merge事件
+    if (prPayload.state === 'closed' && prPayload.merged === true) {
+      // PR刚刚被合并 - 执行版本管理
+      logger.info(`🎯 PR #${pr.number} 已合并到 ${targetBranch}，开始执行版本升级`);
+      return {
+        targetBranch,
+        isDryRun: false,
+        pr,
+        eventType: 'merge'
+      };
+    } else {
+      // PR还未合并 - 预览模式
+      logger.info(`👁️ PR #${pr.number} 预览模式，目标分支: ${targetBranch}`);
+      return {
+        targetBranch,
+        isDryRun: true,
+        pr,
+        eventType: 'preview'
+      };
+    }
+
   } catch (error) {
     throw new ActionError(`获取事件信息失败: ${error}`, 'getEventInfo', error);
   }

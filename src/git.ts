@@ -124,11 +124,46 @@ export async function commitAndPushVersion(version: string, targetBranch: Suppor
     await execGit(['tag', fullVersion]);
     logger.info(`已创建标签: ${fullVersion}`);
 
-    // 推送更改和标签
-    await execGit(['push', 'origin', targetBranch]);
-    await execGit(['push', 'origin', fullVersion]);
+    // 推送更改和标签（添加冲突处理）
+    await safePushWithRetry(targetBranch, fullVersion);
   } catch (error) {
     handleGitError(error, '提交和推送版本更改', true);
+  }
+}
+
+/**
+ * 安全推送，处理并发冲突
+ */
+async function safePushWithRetry(targetBranch: SupportedBranch, version: string, maxRetries = 3): Promise<void> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 1) {
+        logger.info(`🔄 尝试推送 (第${attempt}/${maxRetries}次)`);
+        // 拉取最新更改
+        await execGit(['fetch', 'origin', targetBranch]);
+        await execGit(['rebase', `origin/${targetBranch}`]);
+      }
+      
+      // 推送分支和标签
+      await execGit(['push', 'origin', targetBranch]);
+      await execGit(['push', 'origin', version]);
+      
+      logger.info(`✅ 推送成功 (第${attempt}次尝试)`);
+      return;
+      
+    } catch (error) {
+      if (attempt === maxRetries) {
+        logger.error(`❌ 推送失败，已尝试${maxRetries}次: ${error}`);
+        throw error;
+      }
+      
+      logger.warning(`⚠️ 推送失败 (第${attempt}/${maxRetries}次)，可能存在并发冲突: ${error}`);
+      
+      // 等待随机时间避免竞态
+      const delay = Math.random() * 2000 + 1000; // 1-3秒随机延迟
+      logger.info(`⏳ 等待 ${Math.round(delay)}ms 后重试...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
   }
 }
 
