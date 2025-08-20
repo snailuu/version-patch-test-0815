@@ -1,3 +1,9 @@
+## [v0.3.0-alpha.0] - 2025-08-20
+
+### ✨ Features
+- ci: 修改CHANGELOG ([#24](https://github.com/snailuu/version-patch-test-0815/pull/24))
+
+
 ## [0.1.0-alpha.1](https://github.com/snailuu/version-patch-test-0815/compare/v0.1.0-alpha.0...v0.1.0-alpha.1) (2025-08-18)
 ## [0.1.0-alpha.0](https://github.com/snailuu/version-patch-test-0815/compare/v0.0.1-alpha.0...v0.1.0-alpha.0) (2025-08-18)
 ## [0.0.1-alpha.0](https://github.com/snailuu/version-patch-test-0815/compare/0.1.0-alpha.2...v0.0.1-alpha.0) (2025-08-18)
@@ -21,3 +27,4 @@
 ### Bug Fixes
 
 * 修改构建流程 ([115042f](https://github.com/snailuu/version-patch-test-0815/commit/115042fd7c4c305694ee7d61f6c209235836ae8c))
+
