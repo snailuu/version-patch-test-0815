@@ -364,21 +364,14 @@ export async function getBaseVersion(targetBranch: SupportedBranch, versionInfo:
       const globalBase = VersionUtils.getBaseVersionString(globalLatestVersion);
       const currentAlphaBase = VersionUtils.getBaseVersionString(currentAlphaVersion);
 
-      // 检查Main分支是否有正式版本发布
-      const mainVersion = await versionManager.getLatestVersion('main');
-      const hasMainRelease = mainVersion !== null;
-
-      if (hasMainRelease) {
-        // 如果Main分支有正式版本，Alpha应该基于Main版本进行新功能开发
-        logger.info(`检测到Main分支正式版本 ${mainVersion}，Alpha将基于此版本进行新功能开发`);
-        return mainVersion;
-      } else if (semver.gt(globalBase, currentAlphaBase)) {
+      // 🔧 修复：Alpha分支应该选择最高的基础版本，不应该倒退
+      if (semver.gt(globalBase, currentAlphaBase)) {
         // 如果全局版本更高，使用全局版本
         logger.info(`Alpha版本落后，从全局版本 ${globalLatestVersion} 开始升级`);
         return globalLatestVersion;
       } else {
-        // 否则使用当前Alpha版本继续递增
-        logger.info(`Alpha版本同步，从当前版本 ${currentAlphaVersion} 继续升级`);
+        // 否则使用当前Alpha版本继续递增（即使Main版本更低也不倒退）
+        logger.info(`Alpha版本领先或同步，从当前版本 ${currentAlphaVersion} 继续升级`);
         return currentAlphaVersion;
       }
     }
