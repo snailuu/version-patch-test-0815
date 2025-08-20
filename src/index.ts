@@ -649,21 +649,43 @@ async function updateVersionAndCreateTag(newVersion: string, targetBranch: Suppo
 }
 
 /**
- * 执行分支同步 - 根据Git分支关系的双向同步
+ * 执行分支同步 - 智能同步避免级联触发
  */
 async function syncBranches(targetBranch: SupportedBranch, newVersion: string): Promise<void> {
+  // 检查是否为自动同步提交，避免无限循环
+  if (isAutoSyncCommit()) {
+    logger.info('检测到自动同步提交，跳过分支同步避免级联触发');
+    return;
+  }
+
   if (targetBranch === 'main') {
     // Main 更新后，向下游同步稳定代码: Main → Beta → Alpha
     logger.info('Main分支更新，开始向下游同步稳定代码');
     await syncDownstream('main', 'beta', newVersion);
-    // Beta 同步完成后，继续同步到 Alpha
-    await syncDownstream('beta', 'alpha', newVersion);
+    // 注意：不再自动触发 Beta → Alpha，让Beta分支的工作流处理
   } else if (targetBranch === 'beta') {
     // Beta 更新后，只向 Alpha 同步测试代码: Beta → Alpha
     logger.info('Beta分支更新，向Alpha同步测试代码');
     await syncDownstream('beta', 'alpha', newVersion);
   }
   // Alpha 分支更新时不自动同步，需要手动 PR 到 Beta
+}
+
+/**
+ * 检查是否为自动同步提交
+ */
+function isAutoSyncCommit(): boolean {
+  // 检查最近的提交消息是否包含同步标记
+  const commitMessage = context.payload.head_commit?.message || '';
+  const isSkipCI = commitMessage.includes('[skip ci]');
+  const isSyncCommit = commitMessage.includes('chore: sync') || commitMessage.includes('chore: bump version');
+
+  if (isSkipCI || isSyncCommit) {
+    logger.info(`检测到自动提交: ${commitMessage}`);
+    return true;
+  }
+
+  return false;
 }
 
 /**

@@ -28409,14 +28409,28 @@ async function updateVersionAndCreateTag(newVersion, targetBranch) {
   }
 }
 async function syncBranches(targetBranch, newVersion) {
+  if (isAutoSyncCommit()) {
+    logger.info("\u68C0\u6D4B\u5230\u81EA\u52A8\u540C\u6B65\u63D0\u4EA4\uFF0C\u8DF3\u8FC7\u5206\u652F\u540C\u6B65\u907F\u514D\u7EA7\u8054\u89E6\u53D1");
+    return;
+  }
   if (targetBranch === "main") {
     logger.info("Main\u5206\u652F\u66F4\u65B0\uFF0C\u5F00\u59CB\u5411\u4E0B\u6E38\u540C\u6B65\u7A33\u5B9A\u4EE3\u7801");
     await syncDownstream("main", "beta", newVersion);
-    await syncDownstream("beta", "alpha", newVersion);
   } else if (targetBranch === "beta") {
     logger.info("Beta\u5206\u652F\u66F4\u65B0\uFF0C\u5411Alpha\u540C\u6B65\u6D4B\u8BD5\u4EE3\u7801");
     await syncDownstream("beta", "alpha", newVersion);
   }
+}
+function isAutoSyncCommit() {
+  var _a2;
+  const commitMessage = ((_a2 = import_github.context.payload.head_commit) == null ? void 0 : _a2.message) || "";
+  const isSkipCI = commitMessage.includes("[skip ci]");
+  const isSyncCommit = commitMessage.includes("chore: sync") || commitMessage.includes("chore: bump version");
+  if (isSkipCI || isSyncCommit) {
+    logger.info(`\u68C0\u6D4B\u5230\u81EA\u52A8\u63D0\u4EA4: ${commitMessage}`);
+    return true;
+  }
+  return false;
 }
 async function syncDownstream(sourceBranch, targetBranch, sourceVersion) {
   logger.info(`\u5F00\u59CB\u540C\u6B65 ${sourceBranch} -> ${targetBranch}`);
