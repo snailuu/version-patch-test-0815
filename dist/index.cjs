@@ -28614,50 +28614,150 @@ async function safePushWithRetry(targetBranch, version, maxRetries = 3) {
     }
   }
 }
-async function updateChangelog() {
+async function generateChangelogFromPR(pr, version, releaseType) {
+  if (!pr) {
+    return `### Changes
+- Version ${version} release
+`;
+  }
+  const labelToChangelogType = {
+    "major": "\u{1F4A5} Breaking Changes",
+    "minor": "\u2728 Features",
+    "patch": "\u{1F41B} Bug Fixes",
+    "enhancement": "\u26A1 Improvements",
+    "performance": "\u{1F680} Performance",
+    "security": "\u{1F512} Security",
+    "documentation": "\u{1F4DA} Documentation",
+    "dependencies": "\u2B06\uFE0F Dependencies"
+  };
+  let changeType = "\u{1F4DD} Changes";
+  if (pr.labels) {
+    for (const label of pr.labels) {
+      if (labelToChangelogType[label.name]) {
+        changeType = labelToChangelogType[label.name];
+        break;
+      }
+    }
+    if (changeType === "\u{1F4DD} Changes") {
+      const versionLabels = pr.labels.map((l) => l.name);
+      if (versionLabels.includes("major")) changeType = "\u{1F4A5} Breaking Changes";
+      else if (versionLabels.includes("minor")) changeType = "\u2728 Features";
+      else if (versionLabels.includes("patch")) changeType = "\u{1F41B} Bug Fixes";
+    }
+  }
+  let changelogEntry = `### ${changeType}
+`;
+  const prUrl = pr.html_url;
+  const prTitle = pr.title || `PR #${pr.number}`;
+  changelogEntry += `- ${prTitle} ([#${pr.number}](${prUrl}))
+`;
+  if (pr.body && pr.body.trim()) {
+    const body = pr.body.trim();
+    const sections = ["### Changes", "## Changes", "### What's Changed", "## What's Changed", "### Summary", "## Summary"];
+    for (const section of sections) {
+      const sectionIndex = body.indexOf(section);
+      if (sectionIndex !== -1) {
+        const sectionContent = body.substring(sectionIndex + section.length);
+        const nextSectionIndex = sectionContent.search(/^##/m);
+        const content = nextSectionIndex !== -1 ? sectionContent.substring(0, nextSectionIndex) : sectionContent;
+        const cleanContent = content.trim().split("\n").filter((line) => line.trim()).slice(0, 5).map((line) => line.startsWith("- ") ? `  ${line}` : `  - ${line}`).join("\n");
+        if (cleanContent) {
+          changelogEntry += cleanContent + "\n";
+          break;
+        }
+      }
+    }
+  }
+  return changelogEntry;
+}
+async function updateChangelog(pr = null, version = "", releaseType = "") {
   try {
-    logger.info("\u5F00\u59CB\u751F\u6210 CHANGELOG...");
+    logger.info("\u5F00\u59CB\u751F\u6210\u57FA\u4E8EPR\u7684 CHANGELOG...");
+    const currentDate = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    const versionTag = version.startsWith("v") ? version : `v${version}`;
+    const changelogEntry = await generateChangelogFromPR(pr, version, releaseType);
+    const newEntry = `## [${versionTag}] - ${currentDate}
+
+${changelogEntry}
+`;
+    let existingContent = "";
     try {
-      await (0, import_exec2.exec)("ls", ["CHANGELOG.md"]);
-      logger.info("CHANGELOG.md \u5DF2\u5B58\u5728\uFF0C\u589E\u91CF\u66F4\u65B0");
+      let stdout = "";
+      await (0, import_exec2.exec)("cat", ["CHANGELOG.md"], {
+        listeners: {
+          stdout: (data) => {
+            stdout += data.toString();
+          }
+        }
+      });
+      existingContent = stdout;
+      logger.info("\u8BFB\u53D6\u73B0\u6709CHANGELOG\u5185\u5BB9");
     } catch {
-      logger.info("CHANGELOG.md \u4E0D\u5B58\u5728\uFF0C\u521B\u5EFA\u521D\u59CB\u7248\u672C");
-      await (0, import_exec2.exec)("npx", [
-        "conventional-changelog-cli",
-        "-p",
-        "conventionalcommits",
-        "-i",
-        "CHANGELOG.md",
-        "-s",
-        "-r",
-        "0"
-        // 包含所有发布记录
-      ]);
+      existingContent = `# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+`;
+      logger.info("CHANGELOG.md \u4E0D\u5B58\u5728\uFF0C\u521B\u5EFA\u65B0\u6587\u4EF6");
     }
+    const lines = existingContent.split("\n");
+    let insertIndex = lines.length;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].match(/^## \[.*\]/)) {
+        insertIndex = i;
+        break;
+      }
+    }
+    const entryLines = newEntry.split("\n");
+    lines.splice(insertIndex, 0, ...entryLines);
+    const newContent = lines.join("\n");
+    await (0, import_exec2.exec)("sh", ["-c", `cat > CHANGELOG.md << 'EOF'
+${newContent}
+EOF`]);
+    logger.info(`\u2705 CHANGELOG \u5DF2\u66F4\u65B0\uFF0C\u6DFB\u52A0\u7248\u672C ${versionTag}`);
     try {
-      await (0, import_exec2.exec)("ls", ["CHANGELOG.md"]);
+      let stdout = "";
+      await (0, import_exec2.exec)("head", ["-15", "CHANGELOG.md"], {
+        listeners: {
+          stdout: (data) => {
+            stdout += data.toString();
+          }
+        }
+      });
+      logger.info("\u{1F4CB} CHANGELOG \u9884\u89C8:");
+      logger.info(stdout);
     } catch {
-      await (0, import_exec2.exec)("npx", ["conventional-changelog-cli", "-p", "conventionalcommits", "-i", "CHANGELOG.md", "-s"]);
+      logger.info("\u65E0\u6CD5\u663E\u793ACHANGELOG\u9884\u89C8");
     }
-    logger.info("CHANGELOG \u751F\u6210\u5B8C\u6210");
   } catch (error2) {
-    logger.warning(`CHANGELOG \u751F\u6210\u5931\u8D25\uFF0C\u5C1D\u8BD5\u5B89\u88C5\u4F9D\u8D56: ${error2}`);
+    logger.warning(`\u57FA\u4E8EPR\u7684CHANGELOG\u751F\u6210\u5931\u8D25: ${error2}`);
+    await fallbackToConventionalChangelog();
+  }
+}
+async function fallbackToConventionalChangelog() {
+  try {
+    logger.info("\u4F7F\u7528conventional-changelog\u4F5C\u4E3A\u5907\u7528\u65B9\u6848...");
     try {
+      await (0, import_exec2.exec)("npx", ["conventional-changelog-cli", "--version"]);
+    } catch {
       await (0, import_exec2.exec)("npm", ["install", "-g", "conventional-changelog-cli", "conventional-changelog-conventionalcommits"]);
-      await (0, import_exec2.exec)("npx", [
-        "conventional-changelog-cli",
-        "-p",
-        "conventionalcommits",
-        "-i",
-        "CHANGELOG.md",
-        "-s",
-        "-r",
-        "0"
-      ]);
-      logger.info("CHANGELOG \u751F\u6210\u5B8C\u6210\uFF08\u5DF2\u5B89\u88C5\u4F9D\u8D56\uFF09");
-    } catch (retryError) {
-      logger.warning(`CHANGELOG \u751F\u6210\u6700\u7EC8\u5931\u8D25: ${retryError}`);
     }
+    await (0, import_exec2.exec)("npx", [
+      "conventional-changelog-cli",
+      "-p",
+      "conventionalcommits",
+      "-i",
+      "CHANGELOG.md",
+      "-s",
+      "-r",
+      "0"
+    ]);
+    logger.info("\u2705 \u4F7F\u7528conventional-changelog\u751F\u6210\u5B8C\u6210");
+  } catch (error2) {
+    logger.warning(`\u5907\u7528CHANGELOG\u751F\u6210\u4E5F\u5931\u8D25: ${error2}`);
   }
 }
 function isAutoSyncCommit() {
@@ -28802,18 +28902,19 @@ async function syncBranches(targetBranch, newVersion) {
   }
   return results;
 }
-async function updateVersionAndCreateTag(newVersion, targetBranch) {
+async function updateVersionAndCreateTag(newVersion, targetBranch, pr = null, releaseType = "") {
   try {
     logger.info("\u5F00\u59CB\u6267\u884C\u7248\u672C\u66F4\u65B0...");
     await execGit(["switch", targetBranch]);
     const { updatePackageVersion: updatePackageVersion2 } = await Promise.resolve().then(() => (init_version4(), version_exports));
     await updatePackageVersion2(newVersion);
     await commitAndPushVersion(newVersion, targetBranch);
-    await updateChangelog();
+    await updateChangelog(pr, newVersion, releaseType);
     const hasChanges = await hasFileChanges("CHANGELOG.md");
     if (hasChanges) {
       const fullVersion = VersionUtils.addVersionPrefix(newVersion);
       await commitAndPushFile("CHANGELOG.md", COMMIT_TEMPLATES.CHANGELOG_UPDATE(fullVersion), targetBranch);
+      logger.info("\u2705 CHANGELOG \u66F4\u65B0\u5DF2\u63D0\u4EA4");
     } else {
       logger.info("CHANGELOG \u65E0\u66F4\u6539\uFF0C\u8DF3\u8FC7\u63D0\u4EA4");
     }
@@ -29074,8 +29175,8 @@ async function getEventInfo() {
 // src/index.ts
 init_types();
 init_version4();
-async function handleExecutionMode(newVersion, targetBranch) {
-  await updateVersionAndCreateTag(newVersion, targetBranch);
+async function handleExecutionMode(newVersion, targetBranch, pr, releaseType) {
+  await updateVersionAndCreateTag(newVersion, targetBranch, pr, releaseType);
   const syncResults = await syncBranches(targetBranch, newVersion);
   const failedSyncs = syncResults.filter((result) => !result.success);
   if (failedSyncs.length > 0) {
@@ -29111,7 +29212,7 @@ async function run() {
     } else {
       logger.info("\u{1F680} \u6267\u884C\u7248\u672C\u66F4\u65B0\u6A21\u5F0F...");
       if (newVersion) {
-        await handleExecutionMode(newVersion, targetBranch);
+        await handleExecutionMode(newVersion, targetBranch, pr, releaseType);
         core_default.setOutput("next-version", newVersion);
         logger.info(`\u2705 \u7248\u672C\u66F4\u65B0\u5B8C\u6210: ${newVersion}`);
       } else {
