@@ -78,21 +78,21 @@ const COMMIT_TYPE_TO_RELEASE: Record<string, ReleaseType> = {
   // Breaking changes - Major version
   'BREAKING CHANGE': 'premajor',
   'BREAKING-CHANGE': 'premajor',
-  
-  // New features - Minor version  
-  'feat': 'preminor',
-  'feature': 'preminor',
-  
+
+  // New features - Minor version
+  feat: 'preminor',
+  feature: 'preminor',
+
   // Bug fixes - Patch version
-  'fix': 'prepatch',
-  'bugfix': 'prepatch',
-  'hotfix': 'prepatch',
-  
+  fix: 'prepatch',
+  bugfix: 'prepatch',
+  hotfix: 'prepatch',
+
   // Other patch-level changes
-  'perf': 'prepatch',        // Performance improvements
-  'security': 'prepatch',    // Security fixes
-  'revert': 'prepatch',      // Reverts
-  
+  perf: 'prepatch', // Performance improvements
+  security: 'prepatch', // Security fixes
+  revert: 'prepatch', // Reverts
+
   // No version bump needed for: docs, style, refactor, test, chore
 };
 
@@ -102,27 +102,28 @@ const COMMIT_TYPE_TO_RELEASE: Record<string, ReleaseType> = {
 function parseConventionalCommit(commitMessage: string): { type: string; hasBreaking: boolean } {
   const lines = commitMessage.split('\n');
   const firstLine = lines[0].trim();
-  
+
   // 匹配格式: type(scope): description 或 type: description
   const conventionalMatch = firstLine.match(/^(\w+)(?:\([^)]+\))?\s*:\s*(.+)$/);
-  
+
   let type = '';
   if (conventionalMatch) {
     type = conventionalMatch[1].toLowerCase();
   } else {
     // 如果不是标准格式，尝试从开头提取关键词
-    const typeMatch = firstLine.match(/^(feat|fix|docs|style|refactor|test|chore|perf|security|revert|bugfix|hotfix|feature)/i);
+    const typeMatch = firstLine.match(
+      /^(feat|fix|docs|style|refactor|test|chore|perf|security|revert|bugfix|hotfix|feature)/i,
+    );
     if (typeMatch) {
       type = typeMatch[1].toLowerCase();
     }
   }
-  
+
   // 检查是否包含 Breaking Change
   const fullMessage = commitMessage.toLowerCase();
-  const hasBreaking = fullMessage.includes('breaking change') || 
-                     fullMessage.includes('breaking-change') ||
-                     firstLine.includes('!:'); // type!: description format
-  
+  const hasBreaking =
+    fullMessage.includes('breaking change') || fullMessage.includes('breaking-change') || firstLine.includes('!:'); // type!: description format
+
   return { type, hasBreaking };
 }
 
@@ -155,21 +156,21 @@ export async function inferReleaseTypeFromCommits(targetBranch: string): Promise
       }
 
       const { type, hasBreaking } = parseConventionalCommit(commit.commit.message);
-      
+
       if (hasBreaking) {
         highestPriority = 'premajor';
         foundTypes.push(`BREAKING(${type})`);
         break; // Breaking change是最高优先级，直接退出
       }
-      
+
       if (type && COMMIT_TYPE_TO_RELEASE[type]) {
         const releaseType = COMMIT_TYPE_TO_RELEASE[type];
         foundTypes.push(type);
-        
+
         // 更新为更高优先级的类型
         const currentIndex = priorityOrder.indexOf(highestPriority as ReleaseType);
         const newIndex = priorityOrder.indexOf(releaseType);
-        
+
         if (currentIndex === -1 || (newIndex !== -1 && newIndex < currentIndex)) {
           highestPriority = releaseType;
         }
@@ -331,12 +332,9 @@ export async function createErrorComment(prNumber: number, errorMessage: string)
  * 简化策略：确定版本升级类型 - 专门为merge触发优化
  * 优先级：PR标签 > 智能推断（merge时总是有PR信息，无需commit分析）
  */
-export async function determineReleaseType(
-  pr: PRData | null,
-  targetBranch: string
-): Promise<ReleaseType | ''> {
+export async function determineReleaseType(pr: PRData | null, targetBranch: string): Promise<ReleaseType | ''> {
   logger.info(`🔍 开始确定版本升级类型 (PR: ${pr ? `#${pr.number}` : '无'}, 分支: ${targetBranch})`);
-  
+
   // 1. 优先使用PR标签（merge阶段总是有完整PR信息）
   if (pr?.labels && pr.labels.length > 0) {
     const labelReleaseType = PRUtils.getReleaseTypeFromLabels(pr.labels);
@@ -344,13 +342,13 @@ export async function determineReleaseType(
       logger.info(`✅ 使用PR标签推断: ${labelReleaseType} (来源: PR #${pr.number})`);
       return labelReleaseType;
     } else {
-      const labelNames = pr.labels.map(l => l.name).join(', ');
+      const labelNames = pr.labels.map((l) => l.name).join(', ');
       logger.info(`📝 PR #${pr.number} 有标签但无版本标签: [${labelNames}]`);
     }
   } else if (pr) {
     logger.info(`📝 PR #${pr.number} 没有标签，使用智能推断`);
   }
-  
+
   // 2. 基于分支特性的智能推断
   if (targetBranch === 'alpha') {
     logger.info(`🎯 Alpha分支智能推断: prepatch (默认patch升级)`);
@@ -362,7 +360,7 @@ export async function determineReleaseType(
     logger.info(`🎯 Main分支智能推断: patch (从beta发布)`);
     return 'patch';
   }
-  
+
   logger.info(`❌ 无法推断版本升级类型，将跳过升级`);
   return '';
 }
@@ -474,7 +472,7 @@ export async function getEventInfo(): Promise<{
 
     // ⚠️ 额外验证：确保我们要操作的是目标分支而不是源分支
     logger.info(`🎯 将要操作的分支: ${targetBranch} (应该是PR的目标分支)`);
-    
+
     if (pr.head?.ref === targetBranch) {
       logger.error(`❌ 异常检测：目标分支 ${targetBranch} 与源分支 ${pr.head.ref} 相同`);
       logger.error(`正确的逻辑应该是：${pr.head.ref} → ${pr.base?.ref}`);
@@ -495,7 +493,7 @@ export async function getEventInfo(): Promise<{
         targetBranch,
         isDryRun: false,
         pr,
-        eventType: 'merge'
+        eventType: 'merge',
       };
     } else {
       // PR还未合并 - 预览模式
@@ -504,10 +502,9 @@ export async function getEventInfo(): Promise<{
         targetBranch,
         isDryRun: true,
         pr,
-        eventType: 'preview'
+        eventType: 'preview',
       };
     }
-
   } catch (error) {
     throw new ActionError(`获取事件信息失败: ${error}`, 'getEventInfo', error);
   }
