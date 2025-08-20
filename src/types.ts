@@ -58,7 +58,7 @@ export const DEFAULT_VERSIONS = {
 /** 评论模板 */
 export const COMMENT_TEMPLATES = {
   /** 版本预览评论模板 */
-  VERSION_PREVIEW: (data: VersionPreviewData) => `## 📦 版本预览
+  VERSION_PREVIEW: (data: VersionPreviewData) => `## 📦 版本管理
 
 | 项目 | 值 |
 |------|-----|
@@ -77,7 +77,7 @@ ${errorMessage}
 > 请确保在创建新功能之前，所有已有功能都已完成完整的发布流程（alpha → beta → main）。`,
 
   /** 版本跳过模板 */
-  VERSION_SKIP: (targetBranch: string, baseVersion: string | null) => `## ⏭️ 版本管理跳过
+  VERSION_SKIP: (targetBranch: string, baseVersion: string | null) => `## 📦 版本管理
 
 | 项目 | 值 |
 |------|-----|

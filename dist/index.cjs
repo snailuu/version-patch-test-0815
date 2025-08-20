@@ -26163,7 +26163,7 @@ var init_types = __esm({
     };
     COMMENT_TEMPLATES = {
       /** 版本预览评论模板 */
-      VERSION_PREVIEW: (data) => `## \u{1F4E6} \u7248\u672C\u9884\u89C8
+      VERSION_PREVIEW: (data) => `## \u{1F4E6} \u7248\u672C\u7BA1\u7406
 
 | \u9879\u76EE | \u503C |
 |------|-----|
@@ -26180,7 +26180,7 @@ ${errorMessage}
 
 > \u8BF7\u786E\u4FDD\u5728\u521B\u5EFA\u65B0\u529F\u80FD\u4E4B\u524D\uFF0C\u6240\u6709\u5DF2\u6709\u529F\u80FD\u90FD\u5DF2\u5B8C\u6210\u5B8C\u6574\u7684\u53D1\u5E03\u6D41\u7A0B\uFF08alpha \u2192 beta \u2192 main\uFF09\u3002`,
       /** 版本跳过模板 */
-      VERSION_SKIP: (targetBranch, baseVersion) => `## \u23ED\uFE0F \u7248\u672C\u7BA1\u7406\u8DF3\u8FC7
+      VERSION_SKIP: (targetBranch, baseVersion) => `## \u{1F4E6} \u7248\u672C\u7BA1\u7406
 
 | \u9879\u76EE | \u503C |
 |------|-----|
