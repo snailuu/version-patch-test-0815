@@ -169,20 +169,22 @@ class VersionManager {
 
     // 一次性获取所有标签，避免重复查询
     const allTags = await this.getAllTags();
-    
+
     if (allTags.length === 0) {
       logger.info('📝 未找到任何版本标签，将使用默认版本');
     } else {
       logger.info(`📋 找到 ${allTags.length} 个版本标签`);
     }
-    
+
     // 解析各分支的最新版本
     this.cache.main = this.parseMainVersion(allTags);
     this.cache.beta = this.parseBranchVersion(allTags, 'beta');
     this.cache.alpha = this.parseBranchVersion(allTags, 'alpha');
 
-    logger.info(`📊 版本概览: main=${this.cache.main || '无'}, beta=${this.cache.beta || '无'}, alpha=${this.cache.alpha || '无'}`);
-    
+    logger.info(
+      `📊 版本概览: main=${this.cache.main || '无'}, beta=${this.cache.beta || '无'}, alpha=${this.cache.alpha || '无'}`,
+    );
+
     this.isInitialized = true;
   }
 
@@ -192,14 +194,14 @@ class VersionManager {
   private async getAllTags(): Promise<string[]> {
     const prefix = VersionUtils.getVersionPrefix();
     const stdout = await execGitWithOutput(['tag', '-l', `${prefix}*`, '--sort=-version:refname']);
-    return stdout.split('\n').filter(tag => tag.trim().length > 0);
+    return stdout.split('\n').filter((tag) => tag.trim().length > 0);
   }
 
   /**
    * 解析主分支版本（排除预发布版本）
    */
   private parseMainVersion(tags: string[]): string | null {
-    const mainTags = tags.filter(tag => !tag.includes('-'));
+    const mainTags = tags.filter((tag) => !tag.includes('-'));
     const latest = mainTags[0] || null;
     return latest ? VersionUtils.normalizeVersion(latest) : null;
   }
@@ -208,7 +210,7 @@ class VersionManager {
    * 解析分支版本
    */
   private parseBranchVersion(tags: string[], branchSuffix: string): string | null {
-    const branchTags = tags.filter(tag => tag.includes(`-${branchSuffix}.`));
+    const branchTags = tags.filter((tag) => tag.includes(`-${branchSuffix}.`));
     const latest = branchTags[0] || null;
     return latest ? VersionUtils.normalizeVersion(latest) : null;
   }
@@ -226,9 +228,9 @@ class VersionManager {
    */
   async getGlobalHighestVersion(): Promise<string> {
     await this.initialize();
-    
+
     const versions = [this.cache.main, this.cache.beta, this.cache.alpha].filter(Boolean);
-    
+
     if (versions.length === 0) {
       return VersionUtils.createDefaultVersion('base');
     }
@@ -285,7 +287,7 @@ export async function getLatestTagVersion(branchSuffix: string = ''): Promise<st
   if (branch === 'main' || branch === 'beta' || branch === 'alpha') {
     return await versionManager.getLatestVersion(branch as 'main' | 'beta' | 'alpha');
   }
-  
+
   // 兼容旧的调用方式
   logger.warning(`使用了已弃用的 getLatestTagVersion('${branchSuffix}')，建议使用 versionManager.getLatestVersion()`);
   return await versionManager.getLatestVersion('main');
@@ -362,21 +364,14 @@ export async function getBaseVersion(targetBranch: SupportedBranch, versionInfo:
       const globalBase = VersionUtils.getBaseVersionString(globalLatestVersion);
       const currentAlphaBase = VersionUtils.getBaseVersionString(currentAlphaVersion);
 
-      // 检查Main分支是否有正式版本发布
-      const mainVersion = await versionManager.getLatestVersion('main');
-      const hasMainRelease = mainVersion !== null;
-
-      if (hasMainRelease) {
-        // 如果Main分支有正式版本，Alpha应该基于Main版本进行新功能开发
-        logger.info(`检测到Main分支正式版本 ${mainVersion}，Alpha将基于此版本进行新功能开发`);
-        return mainVersion;
-      } else if (semver.gt(globalBase, currentAlphaBase)) {
+      // 🔧 修复：Alpha分支应该选择最高的基础版本，不应该倒退
+      if (semver.gt(globalBase, currentAlphaBase)) {
         // 如果全局版本更高，使用全局版本
         logger.info(`Alpha版本落后，从全局版本 ${globalLatestVersion} 开始升级`);
         return globalLatestVersion;
       } else {
-        // 否则使用当前Alpha版本继续递增
-        logger.info(`Alpha版本同步，从当前版本 ${currentAlphaVersion} 继续升级`);
+        // 否则使用当前Alpha版本继续递增（即使Main版本更低也不倒退）
+        logger.info(`Alpha版本领先或同步，从当前版本 ${currentAlphaVersion} 继续升级`);
         return currentAlphaVersion;
       }
     }
@@ -427,18 +422,34 @@ function calculateVersionWithLabel(
     return semver.inc(baseVersion, releaseType, 'alpha');
   }
 
-  // 如果标签优先级更高，或者需要跨分支升级，执行版本升级
+  // 🎯 修复核心问题：版本级别维持逻辑
+  // 当前版本优先级更高时，应该维持更高级别而不是降级
   if (labelPriority_value > currentPriority || needsBranchUpgrade(currentBranchType, targetBranch)) {
+    // 标签优先级更高或需要跨分支升级：执行版本升级
     const branchSuffix = targetBranch === 'main' ? undefined : targetBranch;
     return semver.inc(baseVersion, releaseType, branchSuffix);
+  } else if (labelPriority_value < currentPriority) {
+    // 🔧 关键修复：标签优先级更低时，维持当前版本的更高级别
+    logger.info(`📌 标签优先级较低(${getReleaseLevel(releaseType)})，维持当前更高级别并递增预发布版本`);
+
+    if (currentBranchType === targetBranch) {
+      // 同分支：直接递增预发布版本
+      return semver.inc(baseVersion, 'prerelease', targetBranch);
+    } else {
+      // 跨分支但维持更高级别：基于当前版本级别创建新分支版本
+      const branchSuffix = targetBranch === 'main' ? undefined : targetBranch;
+      // 使用当前版本的级别类型而不是标签的级别类型
+      const currentReleaseType = currentPriority === 3 ? 'premajor' : currentPriority === 2 ? 'preminor' : 'prepatch';
+      return semver.inc(baseVersion, currentReleaseType, branchSuffix);
+    }
   } else {
-    // 同级别或更低优先级：递增预发布版本
+    // 同级别：递增预发布版本
     if (currentBranchType === targetBranch) {
       return semver.inc(baseVersion, 'prerelease', targetBranch);
     } else {
       // 跨分支：重新开始计数
       const branchSuffix = targetBranch === 'main' ? undefined : targetBranch;
-      return semver.inc(baseVersion, 'patch', branchSuffix);
+      return semver.inc(baseVersion, releaseType, branchSuffix);
     }
   }
 }
@@ -517,13 +528,13 @@ export async function calculateNewVersion(
 
     // 统一的版本升级逻辑
     const result = calculateVersionUpgrade(baseVersion, targetBranch, releaseType);
-    
+
     if (result) {
       logger.info(`🎯 计算出新版本: ${result}`);
     } else {
       logger.info(`⏭️ 无需版本升级`);
     }
-    
+
     return result;
   } catch (error) {
     throw new ActionError(`版本计算失败: ${error}`, 'calculateNewVersion', error);
