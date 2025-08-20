@@ -28247,7 +28247,13 @@ function calculateVersionWithLabel(baseVersion, targetBranch, releaseType) {
     }
   } else {
     if (currentBranchType === targetBranch) {
-      return import_semver.default.inc(baseVersion, "prerelease", targetBranch);
+      if (targetBranch === "alpha" && releaseType !== "prerelease") {
+        logger.info(`\u{1F504} Alpha\u5206\u652F\u68C0\u6D4B\u5230\u660E\u786E\u7248\u672C\u6807\u7B7E(${releaseType})\uFF0C\u521B\u5EFA\u65B0\u7248\u672C\u800C\u975E\u9012\u589E\u9884\u53D1\u5E03`);
+        const branchSuffix = targetBranch === "main" ? void 0 : targetBranch;
+        return import_semver.default.inc(baseVersion, releaseType, branchSuffix);
+      } else {
+        return import_semver.default.inc(baseVersion, "prerelease", targetBranch);
+      }
     } else {
       const branchSuffix = targetBranch === "main" ? void 0 : targetBranch;
       return import_semver.default.inc(baseVersion, releaseType, branchSuffix);

@@ -452,9 +452,17 @@ function calculateVersionWithLabel(
       return semver.inc(baseVersion, currentReleaseType, branchSuffix);
     }
   } else {
-    // 同级别：递增预发布版本
+    // 🔧 修复：同级别时的处理逻辑
     if (currentBranchType === targetBranch) {
-      return semver.inc(baseVersion, 'prerelease', targetBranch);
+      // 同分支且同级别：对于Alpha分支，如果有明确的版本标签，应该创建新版本而不是递增
+      if (targetBranch === 'alpha' && releaseType !== 'prerelease') {
+        logger.info(`🔄 Alpha分支检测到明确版本标签(${releaseType})，创建新版本而非递增预发布`);
+        const branchSuffix = targetBranch === 'main' ? undefined : targetBranch;
+        return semver.inc(baseVersion, releaseType, branchSuffix);
+      } else {
+        // 其他情况：递增预发布版本
+        return semver.inc(baseVersion, 'prerelease', targetBranch);
+      }
     } else {
       // 跨分支：重新开始计数
       const branchSuffix = targetBranch === 'main' ? undefined : targetBranch;
