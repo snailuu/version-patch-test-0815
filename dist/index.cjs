@@ -26174,7 +26174,9 @@ var init_types = __esm({
 
 > \u2139\uFE0F \u8FD9\u662F\u9884\u89C8\u6A21\u5F0F\uFF0C\u5408\u5E76 PR \u540E\u5C06\u81EA\u52A8\u521B\u5EFA tag \u5E76\u66F4\u65B0\u7248\u672C\u3002`,
       /** 错误评论模板 */
-      ERROR: (errorMessage) => `## \u274C \u7248\u672C\u7BA1\u7406\u9519\u8BEF
+      ERROR: (errorMessage) => `## \u{1F4E6} \u7248\u672C\u7BA1\u7406
+
+\u274C **\u9519\u8BEF\u4FE1\u606F**
 
 ${errorMessage}
 
@@ -29066,7 +29068,7 @@ async function createVersionSkipComment(prNumber, targetBranch, baseVersion) {
 async function createErrorComment(prNumber, errorMessage) {
   try {
     const commentBody = COMMENT_TEMPLATES.ERROR(errorMessage);
-    await updatePRComment(prNumber, commentBody, "## \u274C \u7248\u672C\u7BA1\u7406\u9519\u8BEF");
+    await updatePRComment(prNumber, commentBody, "## \u{1F4E6} \u7248\u672C\u7BA1\u7406");
   } catch (error2) {
     logger.warning(`\u521B\u5EFA\u9519\u8BEF\u8BC4\u8BBA\u5931\u8D25: ${error2}`);
   }

@@ -322,7 +322,7 @@ export async function createVersionSkipComment(
 export async function createErrorComment(prNumber: number, errorMessage: string): Promise<void> {
   try {
     const commentBody = COMMENT_TEMPLATES.ERROR(errorMessage);
-    await updatePRComment(prNumber, commentBody, '## ❌ 版本管理错误');
+    await updatePRComment(prNumber, commentBody, '## 📦 版本管理');
   } catch (error) {
     logger.warning(`创建错误评论失败: ${error}`);
   }

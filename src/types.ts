@@ -70,7 +70,9 @@ export const COMMENT_TEMPLATES = {
 > ℹ️ 这是预览模式，合并 PR 后将自动创建 tag 并更新版本。`,
 
   /** 错误评论模板 */
-  ERROR: (errorMessage: string) => `## ❌ 版本管理错误
+  ERROR: (errorMessage: string) => `## 📦 版本管理
+
+❌ **错误信息**
 
 ${errorMessage}
 
