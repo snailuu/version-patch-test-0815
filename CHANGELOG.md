@@ -1,7 +1,13 @@
-## [v0.3.0] - 2025-08-20
+## [v0.3.2-beta.0] - 2025-08-20
 
 ### 📝 Changes
-- Beta ([#27](https://github.com/snailuu/version-patch-test-0815/pull/27))
+- Alpha ([#29](https://github.com/snailuu/version-patch-test-0815/pull/29))
+
+
+## [v0.3.2-alpha.0] - 2025-08-20
+
+### 🐛 Bug Fixes
+- ci: 修改更新同步逻辑 ([#28](https://github.com/snailuu/version-patch-test-0815/pull/28))
 
 
 ## [v0.3.0-beta.0] - 2025-08-20
@@ -45,6 +51,7 @@
 ### Bug Fixes
 
 * 修改构建流程 ([115042f](https://github.com/snailuu/version-patch-test-0815/commit/115042fd7c4c305694ee7d61f6c209235836ae8c))
+
 
 
 
