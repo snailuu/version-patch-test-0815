@@ -457,6 +457,30 @@ export async function getEventInfo(): Promise<{
 
     const targetBranch = pr.base.ref;
 
+    // 🔍 添加详细的分支信息调试
+    logger.info(`📋 PR分支信息详情:`);
+    logger.info(`   源分支 (head): ${pr.head?.ref || 'unknown'}`);
+    logger.info(`   目标分支 (base): ${pr.base?.ref || 'unknown'}`);
+    logger.info(`   PR号码: #${pr.number}`);
+    logger.info(`   PR状态: ${prPayload.state}`);
+    logger.info(`   是否合并: ${prPayload.merged}`);
+
+    // ⚠️ 额外验证：确保目标分支不是源分支
+    if (pr.head?.ref && pr.base?.ref && pr.head.ref === pr.base.ref) {
+      logger.error(`❌ 检测到异常：源分支和目标分支相同 (${pr.base.ref})`);
+      logger.error(`这通常表示PR配置错误，请检查PR的base分支设置`);
+      return null;
+    }
+
+    // ⚠️ 额外验证：确保我们要操作的是目标分支而不是源分支
+    logger.info(`🎯 将要操作的分支: ${targetBranch} (应该是PR的目标分支)`);
+    
+    if (pr.head?.ref === targetBranch) {
+      logger.error(`❌ 异常检测：目标分支 ${targetBranch} 与源分支 ${pr.head.ref} 相同`);
+      logger.error(`正确的逻辑应该是：${pr.head.ref} → ${pr.base?.ref}`);
+      return null;
+    }
+
     // 检查分支支持
     if (!validateBranch(targetBranch)) {
       logger.info(`❌ 不支持的分支: ${targetBranch}，跳过版本管理`);

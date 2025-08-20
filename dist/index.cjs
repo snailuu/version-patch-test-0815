@@ -29011,6 +29011,7 @@ function validateBranch(branch) {
   return supportedBranches.includes(branch);
 }
 async function getEventInfo() {
+  var _a2, _b, _c, _d, _e, _f;
   try {
     if (import_github2.context.eventName !== "pull_request") {
       logger.info(`\u274C \u53EA\u652F\u6301 pull_request \u4E8B\u4EF6\uFF0C\u5F53\u524D\u4E8B\u4EF6: ${import_github2.context.eventName}`);
@@ -29027,6 +29028,23 @@ async function getEventInfo() {
       return null;
     }
     const targetBranch = pr.base.ref;
+    logger.info(`\u{1F4CB} PR\u5206\u652F\u4FE1\u606F\u8BE6\u60C5:`);
+    logger.info(`   \u6E90\u5206\u652F (head): ${((_a2 = pr.head) == null ? void 0 : _a2.ref) || "unknown"}`);
+    logger.info(`   \u76EE\u6807\u5206\u652F (base): ${((_b = pr.base) == null ? void 0 : _b.ref) || "unknown"}`);
+    logger.info(`   PR\u53F7\u7801: #${pr.number}`);
+    logger.info(`   PR\u72B6\u6001: ${prPayload.state}`);
+    logger.info(`   \u662F\u5426\u5408\u5E76: ${prPayload.merged}`);
+    if (((_c = pr.head) == null ? void 0 : _c.ref) && ((_d = pr.base) == null ? void 0 : _d.ref) && pr.head.ref === pr.base.ref) {
+      logger.error(`\u274C \u68C0\u6D4B\u5230\u5F02\u5E38\uFF1A\u6E90\u5206\u652F\u548C\u76EE\u6807\u5206\u652F\u76F8\u540C (${pr.base.ref})`);
+      logger.error(`\u8FD9\u901A\u5E38\u8868\u793APR\u914D\u7F6E\u9519\u8BEF\uFF0C\u8BF7\u68C0\u67E5PR\u7684base\u5206\u652F\u8BBE\u7F6E`);
+      return null;
+    }
+    logger.info(`\u{1F3AF} \u5C06\u8981\u64CD\u4F5C\u7684\u5206\u652F: ${targetBranch} (\u5E94\u8BE5\u662FPR\u7684\u76EE\u6807\u5206\u652F)`);
+    if (((_e = pr.head) == null ? void 0 : _e.ref) === targetBranch) {
+      logger.error(`\u274C \u5F02\u5E38\u68C0\u6D4B\uFF1A\u76EE\u6807\u5206\u652F ${targetBranch} \u4E0E\u6E90\u5206\u652F ${pr.head.ref} \u76F8\u540C`);
+      logger.error(`\u6B63\u786E\u7684\u903B\u8F91\u5E94\u8BE5\u662F\uFF1A${pr.head.ref} \u2192 ${(_f = pr.base) == null ? void 0 : _f.ref}`);
+      return null;
+    }
     if (!validateBranch(targetBranch)) {
       logger.info(`\u274C \u4E0D\u652F\u6301\u7684\u5206\u652F: ${targetBranch}\uFF0C\u8DF3\u8FC7\u7248\u672C\u7BA1\u7406`);
       return null;
