@@ -28585,10 +28585,33 @@ async function commitAndPushVersion(version, targetBranch) {
     await execGit(["commit", "-m", COMMIT_TEMPLATES.VERSION_BUMP(packageVersion, targetBranch)]);
     await execGit(["tag", fullVersion]);
     logger.info(`\u5DF2\u521B\u5EFA\u6807\u7B7E: ${fullVersion}`);
-    await execGit(["push", "origin", targetBranch]);
-    await execGit(["push", "origin", fullVersion]);
+    await safePushWithRetry(targetBranch, fullVersion);
   } catch (error2) {
     handleGitError(error2, "\u63D0\u4EA4\u548C\u63A8\u9001\u7248\u672C\u66F4\u6539", true);
+  }
+}
+async function safePushWithRetry(targetBranch, version, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 1) {
+        logger.info(`\u{1F504} \u5C1D\u8BD5\u63A8\u9001 (\u7B2C${attempt}/${maxRetries}\u6B21)`);
+        await execGit(["fetch", "origin", targetBranch]);
+        await execGit(["rebase", `origin/${targetBranch}`]);
+      }
+      await execGit(["push", "origin", targetBranch]);
+      await execGit(["push", "origin", version]);
+      logger.info(`\u2705 \u63A8\u9001\u6210\u529F (\u7B2C${attempt}\u6B21\u5C1D\u8BD5)`);
+      return;
+    } catch (error2) {
+      if (attempt === maxRetries) {
+        logger.error(`\u274C \u63A8\u9001\u5931\u8D25\uFF0C\u5DF2\u5C1D\u8BD5${maxRetries}\u6B21: ${error2}`);
+        throw error2;
+      }
+      logger.warning(`\u26A0\uFE0F \u63A8\u9001\u5931\u8D25 (\u7B2C${attempt}/${maxRetries}\u6B21)\uFF0C\u53EF\u80FD\u5B58\u5728\u5E76\u53D1\u51B2\u7A81: ${error2}`);
+      const delay = Math.random() * 2e3 + 1e3;
+      logger.info(`\u23F3 \u7B49\u5F85 ${Math.round(delay)}ms \u540E\u91CD\u8BD5...`);
+      await new Promise((resolve2) => setTimeout(resolve2, delay));
+    }
   }
 }
 async function updateChangelog() {
@@ -28849,120 +28872,6 @@ var PRUtils = class {
     };
   }
 };
-var COMMIT_TYPE_TO_RELEASE = {
-  // Breaking changes - Major version
-  "BREAKING CHANGE": "premajor",
-  "BREAKING-CHANGE": "premajor",
-  // New features - Minor version  
-  "feat": "preminor",
-  "feature": "preminor",
-  // Bug fixes - Patch version
-  "fix": "prepatch",
-  "bugfix": "prepatch",
-  "hotfix": "prepatch",
-  // Other patch-level changes
-  "perf": "prepatch",
-  // Performance improvements
-  "security": "prepatch",
-  // Security fixes
-  "revert": "prepatch"
-  // Reverts
-  // No version bump needed for: docs, style, refactor, test, chore
-};
-function parseConventionalCommit(commitMessage) {
-  const lines = commitMessage.split("\n");
-  const firstLine = lines[0].trim();
-  const conventionalMatch = firstLine.match(/^(\w+)(?:\([^)]+\))?\s*:\s*(.+)$/);
-  let type = "";
-  if (conventionalMatch) {
-    type = conventionalMatch[1].toLowerCase();
-  } else {
-    const typeMatch = firstLine.match(/^(feat|fix|docs|style|refactor|test|chore|perf|security|revert|bugfix|hotfix|feature)/i);
-    if (typeMatch) {
-      type = typeMatch[1].toLowerCase();
-    }
-  }
-  const fullMessage = commitMessage.toLowerCase();
-  const hasBreaking = fullMessage.includes("breaking change") || fullMessage.includes("breaking-change") || firstLine.includes("!:");
-  return { type, hasBreaking };
-}
-async function inferReleaseTypeFromCommits(targetBranch) {
-  try {
-    const { data: commits } = await octokit.rest.repos.listCommits({
-      owner: import_github2.context.repo.owner,
-      repo: import_github2.context.repo.repo,
-      sha: targetBranch,
-      per_page: 10
-      // 检查最近10个commit
-    });
-    if (commits.length === 0) {
-      logger.info("\u{1F4DD} \u672A\u627E\u5230\u6700\u8FD1\u7684commit\uFF0C\u65E0\u6CD5\u63A8\u65AD\u7248\u672C\u7C7B\u578B");
-      return "";
-    }
-    let highestPriority = "";
-    const priorityOrder = ["premajor", "preminor", "prepatch"];
-    const foundTypes = [];
-    for (const commit of commits) {
-      if (commit.parents && commit.parents.length > 1) {
-        continue;
-      }
-      const { type, hasBreaking } = parseConventionalCommit(commit.commit.message);
-      if (hasBreaking) {
-        highestPriority = "premajor";
-        foundTypes.push(`BREAKING(${type})`);
-        break;
-      }
-      if (type && COMMIT_TYPE_TO_RELEASE[type]) {
-        const releaseType = COMMIT_TYPE_TO_RELEASE[type];
-        foundTypes.push(type);
-        const currentIndex = priorityOrder.indexOf(highestPriority);
-        const newIndex = priorityOrder.indexOf(releaseType);
-        if (currentIndex === -1 || newIndex !== -1 && newIndex < currentIndex) {
-          highestPriority = releaseType;
-        }
-      }
-    }
-    if (highestPriority) {
-      logger.info(`\u{1F916} \u57FA\u4E8Ecommit\u5386\u53F2\u63A8\u65AD\u7248\u672C\u7C7B\u578B: ${highestPriority} (\u53D1\u73B0\u7C7B\u578B: ${foundTypes.join(", ")})`);
-    } else {
-      logger.info(`\u{1F4DD} \u672A\u4ECEcommit\u5386\u53F2\u4E2D\u53D1\u73B0\u9700\u8981\u7248\u672C\u5347\u7EA7\u7684\u53D8\u66F4\u7C7B\u578B (\u68C0\u67E5\u4E86${commits.length}\u4E2Acommit)`);
-    }
-    return highestPriority;
-  } catch (error2) {
-    logger.warning(`\u4ECEcommit\u5386\u53F2\u63A8\u65AD\u7248\u672C\u7C7B\u578B\u5931\u8D25: ${error2}`);
-    return "";
-  }
-}
-async function getRecentMergedPR(targetBranch) {
-  try {
-    const { data: commits } = await octokit.rest.repos.listCommits({
-      owner: import_github2.context.repo.owner,
-      repo: import_github2.context.repo.repo,
-      sha: targetBranch,
-      per_page: 10
-    });
-    for (const commit of commits) {
-      if (commit.commit.message.includes("Merge pull request #")) {
-        const prMatch = commit.commit.message.match(/Merge pull request #(\d+)/);
-        if (prMatch) {
-          const prNumber = parseInt(prMatch[1]);
-          const { data: pr } = await octokit.rest.pulls.get({
-            owner: import_github2.context.repo.owner,
-            repo: import_github2.context.repo.repo,
-            pull_number: prNumber
-          });
-          logger.info(`\u627E\u5230\u6700\u8FD1\u5408\u5E76\u7684 PR #${prNumber}`);
-          return pr;
-        }
-      }
-    }
-    logger.info("\u672A\u627E\u5230\u6700\u8FD1\u5408\u5E76\u7684 PR");
-    return null;
-  } catch (error2) {
-    logger.warning(`\u83B7\u53D6\u6700\u8FD1\u5408\u5E76\u7684 PR \u5931\u8D25: ${error2}`);
-    return null;
-  }
-}
 async function getCurrentPR() {
   if (!import_github2.context.payload.pull_request) {
     return null;
@@ -29049,13 +28958,7 @@ async function determineReleaseType(pr, targetBranch) {
       logger.info(`\u{1F4DD} PR #${pr.number} \u6709\u6807\u7B7E\u4F46\u65E0\u7248\u672C\u6807\u7B7E: [${labelNames}]`);
     }
   } else if (pr) {
-    logger.info(`\u{1F4DD} PR #${pr.number} \u6CA1\u6709\u6807\u7B7E`);
-  }
-  logger.info(`\u{1F50D} \u5C1D\u8BD5\u4ECEcommit\u5386\u53F2\u63A8\u65AD\u7248\u672C\u7C7B\u578B...`);
-  const commitReleaseType = await inferReleaseTypeFromCommits(targetBranch);
-  if (commitReleaseType) {
-    logger.info(`\u{1F916} \u4F7F\u7528commit\u5386\u53F2\u63A8\u65AD: ${commitReleaseType}`);
-    return commitReleaseType;
+    logger.info(`\u{1F4DD} PR #${pr.number} \u6CA1\u6709\u6807\u7B7E\uFF0C\u4F7F\u7528\u667A\u80FD\u63A8\u65AD`);
   }
   if (targetBranch === "alpha") {
     logger.info(`\u{1F3AF} Alpha\u5206\u652F\u667A\u80FD\u63A8\u65AD: prepatch (\u9ED8\u8BA4patch\u5347\u7EA7)`);
@@ -29109,56 +29012,42 @@ function validateBranch(branch) {
 }
 async function getEventInfo() {
   try {
-    let targetBranch = "";
-    let isDryRun = false;
-    let pr = null;
-    let eventType = "push";
-    if (import_github2.context.eventName === "pull_request") {
-      const prPayload = import_github2.context.payload.pull_request;
-      if (!prPayload) {
-        logger.error("PR payload \u4E0D\u5B58\u5728");
-        return null;
-      }
-      pr = await getCurrentPR();
-      if (!pr || !pr.base) {
-        logger.error("\u65E0\u6CD5\u83B7\u53D6\u6709\u6548\u7684 PR \u4FE1\u606F");
-        return null;
-      }
-      targetBranch = pr.base.ref;
-      if (prPayload.state === "closed" && prPayload.merged === true) {
-        isDryRun = false;
-        eventType = "merge";
-        logger.info(`\u{1F3AF} PR #${pr.number} \u5DF2\u5408\u5E76\u5230 ${targetBranch} (Merge\u9636\u6BB5\u89E6\u53D1)`);
-      } else {
-        isDryRun = true;
-        eventType = "preview";
-        logger.info(`\u{1F441}\uFE0F PR #${pr.number} \u9884\u89C8\u6A21\u5F0F\uFF0C\u76EE\u6807\u5206\u652F: ${targetBranch}`);
-      }
-    } else if (import_github2.context.eventName === "push") {
-      targetBranch = import_github2.context.ref.split("/").pop();
-      pr = await getRecentMergedPR(targetBranch);
-      isDryRun = false;
-      eventType = "push";
-      if (pr) {
-        logger.info(`\u{1F504} Push\u4E8B\u4EF6\uFF0C\u627E\u5230\u76F8\u5173PR #${pr.number}\uFF0C\u76EE\u6807\u5206\u652F: ${targetBranch}`);
-      } else {
-        logger.info(`\u{1F504} Push\u4E8B\u4EF6\uFF0C\u672A\u627E\u5230\u76F8\u5173PR\uFF0C\u5C06\u4F7F\u7528commit\u5206\u6790\uFF0C\u76EE\u6807\u5206\u652F: ${targetBranch}`);
-      }
-    } else if (import_github2.context.eventName === "repository_dispatch") {
-      const dispatchPayload = import_github2.context.payload.client_payload;
-      targetBranch = (dispatchPayload == null ? void 0 : dispatchPayload.target_branch) || "main";
-      isDryRun = false;
-      eventType = "push";
-      logger.info(`\u{1F4E1} \u624B\u52A8\u89E6\u53D1\u4E8B\u4EF6\uFF0C\u76EE\u6807\u5206\u652F: ${targetBranch}`);
-    } else {
-      logger.info(`\u274C \u4E0D\u652F\u6301\u7684\u4E8B\u4EF6\u7C7B\u578B: ${import_github2.context.eventName}`);
+    if (import_github2.context.eventName !== "pull_request") {
+      logger.info(`\u274C \u53EA\u652F\u6301 pull_request \u4E8B\u4EF6\uFF0C\u5F53\u524D\u4E8B\u4EF6: ${import_github2.context.eventName}`);
       return null;
     }
+    const prPayload = import_github2.context.payload.pull_request;
+    if (!prPayload) {
+      logger.error("PR payload \u4E0D\u5B58\u5728");
+      return null;
+    }
+    const pr = await getCurrentPR();
+    if (!pr || !pr.base) {
+      logger.error("\u65E0\u6CD5\u83B7\u53D6\u6709\u6548\u7684 PR \u4FE1\u606F");
+      return null;
+    }
+    const targetBranch = pr.base.ref;
     if (!validateBranch(targetBranch)) {
       logger.info(`\u274C \u4E0D\u652F\u6301\u7684\u5206\u652F: ${targetBranch}\uFF0C\u8DF3\u8FC7\u7248\u672C\u7BA1\u7406`);
       return null;
     }
-    return { targetBranch, isDryRun, pr, eventType };
+    if (prPayload.state === "closed" && prPayload.merged === true) {
+      logger.info(`\u{1F3AF} PR #${pr.number} \u5DF2\u5408\u5E76\u5230 ${targetBranch}\uFF0C\u5F00\u59CB\u6267\u884C\u7248\u672C\u5347\u7EA7`);
+      return {
+        targetBranch,
+        isDryRun: false,
+        pr,
+        eventType: "merge"
+      };
+    } else {
+      logger.info(`\u{1F441}\uFE0F PR #${pr.number} \u9884\u89C8\u6A21\u5F0F\uFF0C\u76EE\u6807\u5206\u652F: ${targetBranch}`);
+      return {
+        targetBranch,
+        isDryRun: true,
+        pr,
+        eventType: "preview"
+      };
+    }
   } catch (error2) {
     throw new ActionError(`\u83B7\u53D6\u4E8B\u4EF6\u4FE1\u606F\u5931\u8D25: ${error2}`, "getEventInfo", error2);
   }

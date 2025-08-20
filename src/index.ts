@@ -46,7 +46,7 @@ async function run(): Promise<void> {
     // 3. 获取版本信息
     const versionInfo = await getVersionInfo(targetBranch);
 
-    // 4. 使用混合策略确定版本升级类型
+    // 4. 确定版本升级类型（简化逻辑）
     const releaseType = await determineReleaseType(pr, targetBranch);
     logger.info(`📋 版本升级类型: ${releaseType || '无'}`);
 
