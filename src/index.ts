@@ -350,21 +350,21 @@ async function calculateNewVersion(
  */
 async function getBaseVersion(targetBranch: SupportedBranch, versionInfo: VersionInfo): Promise<string | null> {
   switch (targetBranch) {
-    case 'alpha': {
-      // Alpha 基于 Beta 的最新版本，如果没有则基于自己的版本
-      const betaVersion = await getLatestTagVersion('beta');
-      return betaVersion || versionInfo.currentTag || `v${DEFAULT_VERSIONS.base}`;
-    }
+    case 'alpha':
+      // Alpha 基于自己的当前版本进行升级
+      return versionInfo.currentTag || `v${DEFAULT_VERSIONS.base}`;
 
     case 'beta': {
-      // Beta 基于 Main 的最新版本
-      const mainVersion = await getLatestTagVersion('');
-      return mainVersion || `v${DEFAULT_VERSIONS.base}`;
+      // Beta 基于 Alpha 的最新版本进行升级
+      const alphaVersion = await getLatestTagVersion('alpha');
+      return alphaVersion || `v${DEFAULT_VERSIONS.base}`;
     }
 
-    case 'main':
-      // Main 基于自己的当前版本
-      return versionInfo.currentTag || `v${DEFAULT_VERSIONS.base}`;
+    case 'main': {
+      // Main 基于 Beta 的最新版本去掉prerelease标识
+      const betaVersion = await getLatestTagVersion('beta');
+      return betaVersion || `v${DEFAULT_VERSIONS.base}`;
+    }
 
     default:
       return null;

@@ -28215,16 +28215,16 @@ async function calculateNewVersion(targetBranch, versionInfo, releaseType) {
 }
 async function getBaseVersion(targetBranch, versionInfo) {
   switch (targetBranch) {
-    case "alpha": {
-      const betaVersion = await getLatestTagVersion("beta");
-      return betaVersion || versionInfo.currentTag || `v${DEFAULT_VERSIONS.base}`;
-    }
-    case "beta": {
-      const mainVersion = await getLatestTagVersion("");
-      return mainVersion || `v${DEFAULT_VERSIONS.base}`;
-    }
-    case "main":
+    case "alpha":
       return versionInfo.currentTag || `v${DEFAULT_VERSIONS.base}`;
+    case "beta": {
+      const alphaVersion = await getLatestTagVersion("alpha");
+      return alphaVersion || `v${DEFAULT_VERSIONS.base}`;
+    }
+    case "main": {
+      const betaVersion = await getLatestTagVersion("beta");
+      return betaVersion || `v${DEFAULT_VERSIONS.base}`;
+    }
     default:
       return null;
   }
