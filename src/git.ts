@@ -588,20 +588,31 @@ async function syncDownstream(
  * 执行分支同步 - 智能同步避免级联触发
  */
 export async function syncBranches(targetBranch: SupportedBranch, newVersion: string): Promise<BranchSyncResult[]> {
-  // 检查是否为自动同步提交，避免无限循环
-  if (isAutoSyncCommit()) {
-    logger.info('检测到自动同步提交，跳过分支同步避免级联触发');
+  // 🔧 修复：只有在push事件时才检查自动同步提交，PR merge事件需要完整同步链
+  const isPushEvent = context.eventName === 'push';
+  if (isPushEvent && isAutoSyncCommit()) {
+    logger.info('检测到Push事件的自动同步提交，跳过分支同步避免级联触发');
     return [{ success: true }];
   }
 
   const results: BranchSyncResult[] = [];
 
   if (targetBranch === 'main') {
-    // Main 更新后，向下游同步稳定代码: Main → Beta → Alpha
-    logger.info('Main分支更新，开始向下游同步稳定代码');
-    const result = await syncDownstream('main', 'beta', newVersion);
-    results.push(result);
-    // 注意：不再自动触发 Beta → Alpha，让Beta分支的工作流处理
+    // Main 更新后，完整的向下游同步稳定代码: Main → Beta → Alpha
+    logger.info('Main分支更新，开始完整向下游同步稳定代码');
+    
+    // 第一步：Main → Beta
+    const betaResult = await syncDownstream('main', 'beta', newVersion);
+    results.push(betaResult);
+    
+    if (betaResult.success) {
+      // 第二步：Beta → Alpha（级联同步）
+      logger.info('Main → Beta 同步成功，继续 Beta → Alpha 级联同步');
+      const alphaResult = await syncDownstream('beta', 'alpha', newVersion);
+      results.push(alphaResult);
+    } else {
+      logger.warning('Main → Beta 同步失败，跳过 Beta → Alpha 级联同步');
+    }
   } else if (targetBranch === 'beta') {
     // Beta 更新后，只向 Alpha 同步测试代码: Beta → Alpha
     logger.info('Beta分支更新，向Alpha同步测试代码');

@@ -1,7 +1,7 @@
-## [v0.3.0] - 2025-08-20
+## [v0.3.2-alpha.0] - 2025-08-20
 
-### 📝 Changes
-- Beta ([#27](https://github.com/snailuu/version-patch-test-0815/pull/27))
+### 🐛 Bug Fixes
+- ci: 修改更新同步逻辑 ([#28](https://github.com/snailuu/version-patch-test-0815/pull/28))
 
 
 ## [v0.3.0-beta.0] - 2025-08-20
