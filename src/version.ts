@@ -359,19 +359,28 @@ export async function getBaseVersion(targetBranch: SupportedBranch, versionInfo:
       // Alpha 需要比较全局最新版本和当前版本
       const globalLatestVersion = await versionManager.getGlobalHighestVersion();
       const currentAlphaVersion = versionInfo.currentTag || VersionUtils.createDefaultVersion('base');
+      const mainVersion = await versionManager.getLatestVersion('main');
 
       // 比较全局版本和当前Alpha的基础版本
       const globalBase = VersionUtils.getBaseVersionString(globalLatestVersion);
       const currentAlphaBase = VersionUtils.getBaseVersionString(currentAlphaVersion);
+      const mainBase = mainVersion ? VersionUtils.getBaseVersionString(mainVersion) : '0.0.0';
 
-      // 🔧 修复：Alpha分支应该选择最高的基础版本，不应该倒退
-      if (semver.gt(globalBase, currentAlphaBase)) {
-        // 如果全局版本更高，使用全局版本
+      // 🔧 关键修复：检查是否存在版本发布周期问题
+      // 如果当前Alpha的基础版本已经有对应的正式版发布，应该推进到下一个版本
+      if (mainVersion && semver.gte(mainBase, currentAlphaBase)) {
+        // 情况1：正式版已发布当前或更高版本，Alpha应该推进到下一个版本周期
+        const nextVersionBase = semver.inc(mainBase, 'patch'); // 基于已发布版本推进
+        const nextVersion = VersionUtils.addVersionPrefix(nextVersionBase || '0.0.1');
+        logger.info(`🔄 检测到正式版 ${mainVersion} 已发布，Alpha推进到下一版本周期: ${nextVersion}`);
+        return nextVersion;
+      } else if (semver.gt(globalBase, currentAlphaBase)) {
+        // 情况2：全局版本更高，使用全局版本
         logger.info(`Alpha版本落后，从全局版本 ${globalLatestVersion} 开始升级`);
         return globalLatestVersion;
       } else {
-        // 否则使用当前Alpha版本继续递增（即使Main版本更低也不倒退）
-        logger.info(`Alpha版本领先或同步，从当前版本 ${currentAlphaVersion} 继续升级`);
+        // 情况3：Alpha版本领先，继续当前版本的开发
+        logger.info(`Alpha版本领先，从当前版本 ${currentAlphaVersion} 继续升级`);
         return currentAlphaVersion;
       }
     }
