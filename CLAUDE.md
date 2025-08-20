@@ -21,15 +21,38 @@ This is a GitHub Action for automatic package version patching, designed to auto
 
 ### Core Components
 
-**src/index.ts** - Main entry point (1037 lines) containing the GitHub Action logic:
-- Handles PR-based and push-based version bumping
-- Supports three branches: `main`, `beta`, and `alpha`
-- Uses PR labels (`major`, `minor`, `patch`) to determine version increment type
-- Implements complex branch synchronization logic: main → beta → alpha
-- Contains detailed Git stashing/unstashing logic to safely fetch beta version info
-- Handles merge conflicts during synchronization with fallback strategies
+**src/index.ts** - Main entry point orchestrating the GitHub Action workflow:
+- Handles PR-based (preview mode) and push-based (execution mode) events
+- Integrates all modular components for version management
+- Manages error handling and Action outputs
 
 **src/core.ts** - Simple wrapper around GitHub Actions core utilities providing a logger interface
+
+**src/git.ts** - Git operations and branch synchronization logic:
+- Git command execution utilities (`execGit`, `execGitWithOutput`)
+- File change detection and commit/push operations
+- CHANGELOG generation using conventional-changelog-cli
+- Branch synchronization with intelligent conflict resolution
+- Automatic issue creation for unresolvable merge conflicts
+
+**src/version.ts** - Version calculation and management:
+- `VersionUtils` class with prefix handling, parsing, and normalization
+- Git tag operations and version comparison logic
+- Base version calculation from upstream branches
+- Version upgrade algorithms based on labels and branch hierarchy
+- Package.json version file updates
+
+**src/pr.ts** - GitHub Pull Request operations:
+- `PRUtils` class for PR label validation and release type detection
+- PR information retrieval for both pull_request and push events
+- Comment management (create/update version previews, errors, skip messages)
+- Event validation and branch support checking
+
+**src/types.ts** - TypeScript type definitions and constants:
+- Core types: `SupportedBranch`, `VersionInfo`, `PRData`, `VersionPreviewData`
+- Configuration constants: version prefixes, Git user config, default versions
+- Message templates: comments, commits, error messages
+- Error handling with `ActionError` class and type guards
 
 ### Version Management Strategy
 

@@ -141,6 +141,124 @@ export class VersionUtils {
   }
 }
 
+// ==================== 版本缓存机制 ====================
+
+/**
+ * 版本缓存接口
+ */
+interface VersionCache {
+  main?: string | null;
+  beta?: string | null;
+  alpha?: string | null;
+}
+
+/**
+ * 版本管理器 - 统一版本查询和缓存
+ */
+class VersionManager {
+  private cache: VersionCache = {};
+  private isInitialized = false;
+
+  /**
+   * 初始化版本缓存 - 一次性获取所有版本信息
+   */
+  async initialize(): Promise<void> {
+    if (this.isInitialized) return;
+
+    logger.info('🔍 初始化版本信息...');
+
+    // 一次性获取所有标签，避免重复查询
+    const allTags = await this.getAllTags();
+    
+    if (allTags.length === 0) {
+      logger.info('📝 未找到任何版本标签，将使用默认版本');
+    } else {
+      logger.info(`📋 找到 ${allTags.length} 个版本标签`);
+    }
+    
+    // 解析各分支的最新版本
+    this.cache.main = this.parseMainVersion(allTags);
+    this.cache.beta = this.parseBranchVersion(allTags, 'beta');
+    this.cache.alpha = this.parseBranchVersion(allTags, 'alpha');
+
+    logger.info(`📊 版本概览: main=${this.cache.main || '无'}, beta=${this.cache.beta || '无'}, alpha=${this.cache.alpha || '无'}`);
+    
+    this.isInitialized = true;
+  }
+
+  /**
+   * 一次性获取所有版本标签
+   */
+  private async getAllTags(): Promise<string[]> {
+    const prefix = VersionUtils.getVersionPrefix();
+    const stdout = await execGitWithOutput(['tag', '-l', `${prefix}*`, '--sort=-version:refname']);
+    return stdout.split('\n').filter(tag => tag.trim().length > 0);
+  }
+
+  /**
+   * 解析主分支版本（排除预发布版本）
+   */
+  private parseMainVersion(tags: string[]): string | null {
+    const mainTags = tags.filter(tag => !tag.includes('-'));
+    const latest = mainTags[0] || null;
+    return latest ? VersionUtils.normalizeVersion(latest) : null;
+  }
+
+  /**
+   * 解析分支版本
+   */
+  private parseBranchVersion(tags: string[], branchSuffix: string): string | null {
+    const branchTags = tags.filter(tag => tag.includes(`-${branchSuffix}.`));
+    const latest = branchTags[0] || null;
+    return latest ? VersionUtils.normalizeVersion(latest) : null;
+  }
+
+  /**
+   * 获取指定分支的最新版本
+   */
+  async getLatestVersion(branch: 'main' | 'beta' | 'alpha'): Promise<string | null> {
+    await this.initialize();
+    return this.cache[branch] || null;
+  }
+
+  /**
+   * 获取全局最高基础版本
+   */
+  async getGlobalHighestVersion(): Promise<string> {
+    await this.initialize();
+    
+    const versions = [this.cache.main, this.cache.beta, this.cache.alpha].filter(Boolean);
+    
+    if (versions.length === 0) {
+      return VersionUtils.createDefaultVersion('base');
+    }
+
+    // 找到最高的基础版本号
+    let highestBaseVersion = '0.0.0';
+    for (const version of versions) {
+      const baseVersion = VersionUtils.getBaseVersionString(version!);
+      if (semver.gt(baseVersion, highestBaseVersion)) {
+        highestBaseVersion = baseVersion;
+      }
+    }
+
+    const result = VersionUtils.addVersionPrefix(highestBaseVersion);
+    logger.info(`🏆 全局最高基础版本: ${result}`);
+    return result;
+  }
+
+  /**
+   * 清除缓存（用于测试或重新初始化）
+   */
+  clearCache(): void {
+    this.cache = {};
+    this.isInitialized = false;
+  }
+}
+
+// 全局版本管理器实例
+const versionManager = new VersionManager();
+
 // ==================== Git 版本操作 ====================
 
 /**
@@ -160,54 +278,28 @@ async function execGitWithOutput(args: string[]): Promise<string> {
 
 /**
  * 获取指定分支的最新 git tag 版本
+ * @deprecated 使用 versionManager.getLatestVersion() 替代
  */
 export async function getLatestTagVersion(branchSuffix: string = ''): Promise<string | null> {
-  try {
-    const prefix = VersionUtils.getVersionPrefix();
-    const pattern = branchSuffix ? `${prefix}*-${branchSuffix}.*` : `${prefix}*`;
-    const stdout = await execGitWithOutput(['tag', '-l', pattern, '--sort=-version:refname']);
-
-    let tags = stdout.split('\n').filter((tag) => tag.trim().length > 0);
-
-    // 如果是获取 main 分支版本（branchSuffix 为空），只保留正式版本（不包含 prerelease）
-    if (!branchSuffix) {
-      tags = tags.filter((tag) => {
-        // 正式版本格式：v1.2.3，不包含 `-`
-        // 排除 prerelease 版本：v1.2.3-alpha.0, v1.2.3-beta.0
-        return !tag.includes('-');
-      });
-      logger.info(`过滤后的 main 分支正式版本标签: ${tags.join(', ') || '无'}`);
-    }
-
-    if (tags.length === 0) {
-      logger.info(`未找到 ${branchSuffix || 'main'} 分支的 tag`);
-      return null;
-    }
-
-    const latestTag = tags[0];
-    // 标准化版本号前缀
-    const normalizedTag = VersionUtils.normalizeVersion(latestTag);
-    logger.info(`获取最新 ${branchSuffix || 'main'} tag: ${normalizedTag}`);
-    return normalizedTag;
-  } catch (error) {
-    logger.warning(`获取 ${branchSuffix || 'main'} tag 失败: ${error}`);
-    return null;
+  const branch = branchSuffix || 'main';
+  if (branch === 'main' || branch === 'beta' || branch === 'alpha') {
+    return await versionManager.getLatestVersion(branch as 'main' | 'beta' | 'alpha');
   }
+  
+  // 兼容旧的调用方式
+  logger.warning(`使用了已弃用的 getLatestTagVersion('${branchSuffix}')，建议使用 versionManager.getLatestVersion()`);
+  return await versionManager.getLatestVersion('main');
 }
 
 /**
  * 获取版本信息
  */
 export async function getVersionInfo(targetBranch: SupportedBranch): Promise<VersionInfo> {
-  const currentTagVersion = await getLatestTagVersion(targetBranch === 'main' ? '' : targetBranch);
-  const betaTagVersion = await getLatestTagVersion('beta');
+  const currentTagVersion = await versionManager.getLatestVersion(targetBranch === 'main' ? 'main' : targetBranch);
+  const betaTagVersion = await versionManager.getLatestVersion('beta');
 
   const current = currentTagVersion || DEFAULT_VERSIONS.base;
   const beta = betaTagVersion || DEFAULT_VERSIONS.beta;
-
-  logger.info(`当前 ${targetBranch} tag 版本: ${currentTagVersion || '无'}`);
-  logger.info(`当前使用版本: ${current}`);
-  logger.info(`beta tag 版本: ${betaTagVersion || '无'}`);
 
   return {
     current,
@@ -221,31 +313,7 @@ export async function getVersionInfo(targetBranch: SupportedBranch): Promise<Ver
  * 获取全局最新版本（比较所有分支）
  */
 export async function getLatestGlobalVersion(): Promise<string> {
-  // 获取所有分支的最新版本
-  const mainVersion = await getLatestTagVersion(''); // 正式版本
-  const betaVersion = await getLatestTagVersion('beta'); // Beta版本
-  const alphaVersion = await getLatestTagVersion('alpha'); // Alpha版本
-
-  const versions = [mainVersion, betaVersion, alphaVersion].filter(Boolean);
-
-  if (versions.length === 0) {
-    return VersionUtils.createDefaultVersion('base');
-  }
-
-  // 找到最高的基础版本号
-  let highestBaseVersion = '0.0.0';
-
-  for (const version of versions) {
-    const baseVersion = VersionUtils.getBaseVersionString(version!);
-    if (semver.gt(baseVersion, highestBaseVersion)) {
-      highestBaseVersion = baseVersion;
-    }
-  }
-
-  logger.info(`全局版本比较: main=${mainVersion}, beta=${betaVersion}, alpha=${alphaVersion}`);
-  logger.info(`全局最高基础版本: ${VersionUtils.addVersionPrefix(highestBaseVersion)}`);
-
-  return VersionUtils.addVersionPrefix(highestBaseVersion);
+  return await versionManager.getGlobalHighestVersion();
 }
 
 // ==================== 版本计算逻辑 ====================
@@ -287,7 +355,7 @@ export async function getBaseVersion(targetBranch: SupportedBranch, versionInfo:
   switch (targetBranch) {
     case 'alpha': {
       // Alpha 需要比较全局最新版本和当前版本
-      const globalLatestVersion = await getLatestGlobalVersion();
+      const globalLatestVersion = await versionManager.getGlobalHighestVersion();
       const currentAlphaVersion = versionInfo.currentTag || VersionUtils.createDefaultVersion('base');
 
       // 比较全局版本和当前Alpha的基础版本
@@ -295,7 +363,7 @@ export async function getBaseVersion(targetBranch: SupportedBranch, versionInfo:
       const currentAlphaBase = VersionUtils.getBaseVersionString(currentAlphaVersion);
 
       // 检查Main分支是否有正式版本发布
-      const mainVersion = await getLatestTagVersion('');
+      const mainVersion = await versionManager.getLatestVersion('main');
       const hasMainRelease = mainVersion !== null;
 
       if (hasMainRelease) {
@@ -315,13 +383,13 @@ export async function getBaseVersion(targetBranch: SupportedBranch, versionInfo:
 
     case 'beta': {
       // Beta 基于 Alpha 的最新版本进行升级
-      const alphaVersion = await getLatestTagVersion('alpha');
+      const alphaVersion = await versionManager.getLatestVersion('alpha');
       return alphaVersion || VersionUtils.createDefaultVersion('base');
     }
 
     case 'main': {
       // Main 基于 Beta 的最新版本去掉prerelease标识
-      const betaVersion = await getLatestTagVersion('beta');
+      const betaVersion = await versionManager.getLatestVersion('beta');
       return betaVersion || VersionUtils.createDefaultVersion('base');
     }
 
@@ -350,12 +418,12 @@ function calculateVersionWithLabel(
   const labelPriority_value = labelPriority[getReleaseLevel(releaseType)];
 
   logger.info(
-    `版本升级分析: 基础版本=${baseVersion}, 当前优先级=${currentPriority}, 标签优先级=${labelPriority_value}`,
+    `🔧 版本升级分析: 基础版本=${baseVersion}, 当前优先级=${currentPriority}, 标签优先级=${labelPriority_value}`,
   );
 
   // 特殊处理：如果基础版本来自不同分支类型，重新开始计数
   if (targetBranch === 'alpha' && currentBranchType !== 'alpha') {
-    logger.info(`检测到基础版本跨分支变化 (${currentBranchType} -> alpha)，重新开始Alpha计数`);
+    logger.info(`🔄 检测到基础版本跨分支变化 (${currentBranchType} -> alpha)，重新开始Alpha计数`);
     return semver.inc(baseVersion, releaseType, 'alpha');
   }
 
@@ -447,14 +515,22 @@ export async function calculateNewVersion(
     // 获取上游分支的版本作为基础版本
     const baseVersion = await getBaseVersion(targetBranch, versionInfo);
     if (!baseVersion) {
-      logger.error(`无法获取 ${targetBranch} 分支的基础版本`);
+      logger.error(`❌ 无法获取 ${targetBranch} 分支的基础版本`);
       return null;
     }
 
-    logger.info(`${targetBranch} 分支基础版本: ${baseVersion}`);
+    logger.info(`📌 ${targetBranch} 分支基础版本: ${baseVersion}`);
 
     // 统一的版本升级逻辑
-    return calculateVersionUpgrade(baseVersion, targetBranch, releaseType);
+    const result = calculateVersionUpgrade(baseVersion, targetBranch, releaseType);
+    
+    if (result) {
+      logger.info(`🎯 计算出新版本: ${result}`);
+    } else {
+      logger.info(`⏭️ 无需版本升级`);
+    }
+    
+    return result;
   } catch (error) {
     throw new ActionError(`版本计算失败: ${error}`, 'calculateNewVersion', error);
   }

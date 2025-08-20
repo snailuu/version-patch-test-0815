@@ -55,21 +55,37 @@ async function run(): Promise<void> {
 
     // 6. 计算新版本号
     const newVersion = await calculateNewVersion(targetBranch, versionInfo, releaseType);
-    logger.info(`${isDryRun ? '预览' : '新'}版本: ${newVersion}`);
+    
+    // 改进日志输出，提供更多调试信息
+    if (newVersion) {
+      logger.info(`🎯 ${isDryRun ? '预览' : '新'}版本: ${newVersion}`);
+    } else {
+      logger.warning(`⚠️ 版本计算结果为空 - 目标分支: ${targetBranch}, 发布类型: ${releaseType || '无'}, 基础版本: ${baseVersion || '无'}`);
+    }
 
     // 7. 根据模式执行相应操作
     if (isDryRun) {
       // 预览模式：更新 PR 评论
+      logger.info('📝 执行预览模式...');
       await handlePreviewMode(pr, targetBranch, baseVersion, newVersion, releaseType);
-      core.setOutput('preview-version', newVersion);
+      core.setOutput('preview-version', newVersion || '');
       core.setOutput('is-preview', 'true');
-    } else if (newVersion) {
-      // 执行模式：更新版本并同步分支
-      await handleExecutionMode(newVersion, targetBranch);
-      core.setOutput('next-version', newVersion);
-      core.setOutput('is-preview', 'false');
     } else {
-      logger.info('无需版本升级，跳过');
+      // 执行模式：无论是否有新版本都要处理
+      logger.info('🚀 执行版本更新模式...');
+      
+      if (newVersion) {
+        // 有新版本：更新版本并同步分支
+        await handleExecutionMode(newVersion, targetBranch);
+        core.setOutput('next-version', newVersion);
+        logger.info(`✅ 版本更新完成: ${newVersion}`);
+      } else {
+        // 无新版本：记录详细信息但不阻塞流程
+        logger.info(`ℹ️ 无需版本升级 - 目标分支: ${targetBranch}, 当前版本: ${baseVersion || '无'}, 发布类型: ${releaseType || '无'}`);
+        core.setOutput('next-version', '');
+      }
+      
+      core.setOutput('is-preview', 'false');
     }
   } catch (error: unknown) {
     if (error instanceof ActionError) {
