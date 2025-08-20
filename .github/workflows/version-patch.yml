@@ -1,17 +1,21 @@
 on:
+  # Push事件：作为兜底方案，处理直接推送到分支的情况
   push:
     branches:
       - main
       - alpha
       - beta
+  # Pull Request事件：处理预览和merge阶段
   pull_request:
     branches:
       - main
       - alpha
       - beta
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    # 🎯 关键：添加closed事件以支持merge阶段触发
+    types: [opened, synchronize, reopened, labeled, unlabeled, closed]
+  # 手动触发支持
   repository_dispatch:
-    types: [label-changed]
+    types: [label-changed, version-patch]
 
 jobs:
   build:
@@ -48,7 +52,16 @@ jobs:
 
   version-path:
     runs-on: ubuntu-latest
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') && ((github.event_name == 'pull_request' && github.event.pull_request.labels.*) || github.event_name == 'push' || github.event_name == 'repository_dispatch') }}
+    # 🎯 更新条件：支持merge事件和预览事件
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]') && (
+        (github.event_name == 'pull_request' && (
+          github.event.pull_request.labels.* ||
+          (github.event.action == 'closed' && github.event.pull_request.merged == true)
+        )) ||
+        github.event_name == 'push' ||
+        github.event_name == 'repository_dispatch'
+      )
     needs: build
     permissions:
       contents: write

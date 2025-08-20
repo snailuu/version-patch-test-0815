@@ -1,6 +1,6 @@
 import core, { logger } from './core';
 import { configureGitUser, syncBranches, updateVersionAndCreateTag } from './git';
-import { getEventInfo, handlePreviewMode, PRUtils } from './pr';
+import { determineReleaseType, getEventInfo, handlePreviewMode } from './pr';
 import { ActionError, isSupportedBranch, type SupportedBranch } from './types';
 import { calculateNewVersion, getBaseVersion, getVersionInfo } from './version';
 
@@ -30,7 +30,7 @@ async function run(): Promise<void> {
     const eventInfo = await getEventInfo();
     if (!eventInfo) return;
 
-    const { targetBranch, isDryRun, pr } = eventInfo;
+    const { targetBranch, isDryRun, pr, eventType } = eventInfo;
 
     // 类型守卫：确保 targetBranch 是支持的分支类型
     if (!isSupportedBranch(targetBranch)) {
@@ -38,7 +38,7 @@ async function run(): Promise<void> {
       return;
     }
 
-    logger.info(`目标分支: ${targetBranch} ${isDryRun ? '(预览模式)' : '(执行模式)'}`);
+    logger.info(`目标分支: ${targetBranch} (${eventType}模式${isDryRun ? ' - 预览' : ' - 执行'})`);
 
     // 2. 配置 Git 用户信息
     await configureGitUser();
@@ -46,9 +46,9 @@ async function run(): Promise<void> {
     // 3. 获取版本信息
     const versionInfo = await getVersionInfo(targetBranch);
 
-    // 4. 确定版本升级类型
-    const releaseType = PRUtils.getReleaseTypeFromLabels(pr?.labels);
-    logger.info(`版本升级类型: ${releaseType}`);
+    // 4. 使用混合策略确定版本升级类型
+    const releaseType = await determineReleaseType(pr, targetBranch);
+    logger.info(`📋 版本升级类型: ${releaseType || '无'}`);
 
     // 5. 获取基础版本（用于显示真实的当前版本）
     const baseVersion = await getBaseVersion(targetBranch, versionInfo);
