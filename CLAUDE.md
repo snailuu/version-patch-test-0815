@@ -21,7 +21,7 @@ This is a GitHub Action for automatic package version patching, designed to auto
 
 ### Core Components
 
-**src/index.ts** - Main entry point (230 lines) containing the GitHub Action logic:
+**src/index.ts** - Main entry point (1037 lines) containing the GitHub Action logic:
 - Handles PR-based and push-based version bumping
 - Supports three branches: `main`, `beta`, and `alpha`
 - Uses PR labels (`major`, `minor`, `patch`) to determine version increment type
@@ -81,6 +81,8 @@ As documented in todo.md:
 - **Missing automation**: No automatic issue creation for unresolvable merge conflicts
 
 ### Testing
+
+No test framework currently configured in the repository.
 
 ALWAYS prefer editing an existing file to creating a new one.
 NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
