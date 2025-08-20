@@ -1,6 +1,6 @@
 import core, { logger } from './core';
 import { configureGitUser, syncBranches, updateVersionAndCreateTag } from './git';
-import { getEventInfo, handlePreviewMode, PRUtils } from './pr';
+import { determineReleaseType, getEventInfo, handlePreviewMode } from './pr';
 import { ActionError, isSupportedBranch, type SupportedBranch } from './types';
 import { calculateNewVersion, getBaseVersion, getVersionInfo } from './version';
 
@@ -46,27 +46,9 @@ async function run(): Promise<void> {
     // 3. 获取版本信息
     const versionInfo = await getVersionInfo(targetBranch);
 
-    // 4. 确定版本升级类型（统一两种模式的逻辑）
-    let releaseType = PRUtils.getReleaseTypeFromLabels(pr?.labels);
-    
-    // 如果无法从PR获取标签，使用智能推断（确保两种模式行为一致）
-    if (!releaseType) {
-      switch (targetBranch) {
-        case 'alpha':
-          releaseType = 'prepatch'; // Alpha分支默认patch升级
-          logger.info(`🤖 智能推断版本升级类型: ${releaseType} (Alpha分支默认)`);
-          break;
-        case 'beta':
-        case 'main':
-          // Beta和Main分支可以自动升级，不需要标签
-          logger.info(`📋 ${targetBranch}分支将使用自动升级逻辑`);
-          break;
-        default:
-          logger.info(`📋 版本升级类型: 无`);
-      }
-    } else {
-      logger.info(`📋 版本升级类型: ${releaseType}`);
-    }
+    // 4. 使用混合策略确定版本升级类型
+    const releaseType = await determineReleaseType(pr, targetBranch);
+    logger.info(`📋 版本升级类型: ${releaseType || '无'}`);
 
     // 5. 获取基础版本（用于显示真实的当前版本）
     const baseVersion = await getBaseVersion(targetBranch, versionInfo);
