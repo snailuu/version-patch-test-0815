@@ -28213,10 +28213,49 @@ async function calculateNewVersion(targetBranch, versionInfo, releaseType) {
   logger.info(`${targetBranch} \u5206\u652F\u57FA\u7840\u7248\u672C: ${baseVersion}`);
   return calculateVersionUpgrade(baseVersion, targetBranch, releaseType);
 }
+async function getLatestGlobalVersion() {
+  const mainVersion = await getLatestTagVersion("");
+  const betaVersion = await getLatestTagVersion("beta");
+  const alphaVersion = await getLatestTagVersion("alpha");
+  const versions = [mainVersion, betaVersion, alphaVersion].filter(Boolean);
+  if (versions.length === 0) {
+    return `v${DEFAULT_VERSIONS.base}`;
+  }
+  let highestBaseVersion = "0.0.0";
+  for (const version of versions) {
+    const cleanVersion = version.replace(/^v/, "");
+    const parsed = import_semver.default.parse(cleanVersion);
+    if (parsed) {
+      const baseVersion = `${parsed.major}.${parsed.minor}.${parsed.patch}`;
+      if (import_semver.default.gt(baseVersion, highestBaseVersion)) {
+        highestBaseVersion = baseVersion;
+      }
+    }
+  }
+  logger.info(`\u5168\u5C40\u7248\u672C\u6BD4\u8F83: main=${mainVersion}, beta=${betaVersion}, alpha=${alphaVersion}`);
+  logger.info(`\u5168\u5C40\u6700\u9AD8\u57FA\u7840\u7248\u672C: v${highestBaseVersion}`);
+  return `v${highestBaseVersion}`;
+}
 async function getBaseVersion(targetBranch, versionInfo) {
   switch (targetBranch) {
-    case "alpha":
-      return versionInfo.currentTag || `v${DEFAULT_VERSIONS.base}`;
+    case "alpha": {
+      const globalLatestVersion = await getLatestGlobalVersion();
+      const currentAlphaVersion = versionInfo.currentTag || `v${DEFAULT_VERSIONS.base}`;
+      const globalBase = globalLatestVersion.replace(/^v/, "");
+      const currentAlphaClean = currentAlphaVersion.replace(/^v/, "");
+      const currentAlphaParsed = import_semver.default.parse(currentAlphaClean);
+      if (currentAlphaParsed) {
+        const currentAlphaBase = `${currentAlphaParsed.major}.${currentAlphaParsed.minor}.${currentAlphaParsed.patch}`;
+        if (import_semver.default.gt(globalBase, currentAlphaBase)) {
+          logger.info(`Alpha\u7248\u672C\u843D\u540E\uFF0C\u4ECE\u5168\u5C40\u7248\u672C ${globalLatestVersion} \u5F00\u59CB\u5347\u7EA7`);
+          return globalLatestVersion;
+        } else {
+          logger.info(`Alpha\u7248\u672C\u540C\u6B65\uFF0C\u4ECE\u5F53\u524D\u7248\u672C ${currentAlphaVersion} \u7EE7\u7EED\u5347\u7EA7`);
+          return currentAlphaVersion;
+        }
+      }
+      return globalLatestVersion;
+    }
     case "beta": {
       const alphaVersion = await getLatestTagVersion("alpha");
       return alphaVersion || `v${DEFAULT_VERSIONS.base}`;
@@ -28259,6 +28298,10 @@ function calculateVersionWithLabel(baseVersion, targetBranch, releaseType) {
   logger.info(
     `\u7248\u672C\u5347\u7EA7\u5206\u6790: \u57FA\u7840\u7248\u672C=${baseVersion}, \u5F53\u524D\u4F18\u5148\u7EA7=${currentPriority}, \u6807\u7B7E\u4F18\u5148\u7EA7=${labelPriority_value}`
   );
+  if (targetBranch === "alpha" && currentBranchType !== "alpha") {
+    logger.info(`\u68C0\u6D4B\u5230\u57FA\u7840\u7248\u672C\u8DE8\u5206\u652F\u53D8\u5316 (${currentBranchType} -> alpha)\uFF0C\u91CD\u65B0\u5F00\u59CBAlpha\u8BA1\u6570`);
+    return import_semver.default.inc(baseVersion, releaseType, "alpha");
+  }
   if (labelPriority_value > currentPriority || needsBranchUpgrade(currentBranchType, targetBranch)) {
     const branchSuffix = targetBranch === "main" ? void 0 : targetBranch;
     return import_semver.default.inc(baseVersion, releaseType, branchSuffix);

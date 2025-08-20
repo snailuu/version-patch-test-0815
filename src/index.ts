@@ -346,13 +346,70 @@ async function calculateNewVersion(
 }
 
 /**
+ * 获取全局最新版本（比较所有分支）
+ */
+async function getLatestGlobalVersion(): Promise<string> {
+  // 获取所有分支的最新版本
+  const mainVersion = await getLatestTagVersion(''); // 正式版本
+  const betaVersion = await getLatestTagVersion('beta'); // Beta版本
+  const alphaVersion = await getLatestTagVersion('alpha'); // Alpha版本
+
+  const versions = [mainVersion, betaVersion, alphaVersion].filter(Boolean);
+
+  if (versions.length === 0) {
+    return `v${DEFAULT_VERSIONS.base}`;
+  }
+
+  // 找到最高的基础版本号
+  let highestBaseVersion = '0.0.0';
+
+  for (const version of versions) {
+    const cleanVersion = version!.replace(/^v/, '');
+    const parsed = semver.parse(cleanVersion);
+    if (parsed) {
+      const baseVersion = `${parsed.major}.${parsed.minor}.${parsed.patch}`;
+      if (semver.gt(baseVersion, highestBaseVersion)) {
+        highestBaseVersion = baseVersion;
+      }
+    }
+  }
+
+  logger.info(`全局版本比较: main=${mainVersion}, beta=${betaVersion}, alpha=${alphaVersion}`);
+  logger.info(`全局最高基础版本: v${highestBaseVersion}`);
+
+  return `v${highestBaseVersion}`;
+}
+
+/**
  * 获取目标分支的基础版本
  */
 async function getBaseVersion(targetBranch: SupportedBranch, versionInfo: VersionInfo): Promise<string | null> {
   switch (targetBranch) {
-    case 'alpha':
-      // Alpha 基于自己的当前版本进行升级
-      return versionInfo.currentTag || `v${DEFAULT_VERSIONS.base}`;
+    case 'alpha': {
+      // Alpha 需要比较全局最新版本和当前版本
+      const globalLatestVersion = await getLatestGlobalVersion();
+      const currentAlphaVersion = versionInfo.currentTag || `v${DEFAULT_VERSIONS.base}`;
+
+      // 比较全局版本和当前Alpha的基础版本
+      const globalBase = globalLatestVersion.replace(/^v/, '');
+      const currentAlphaClean = currentAlphaVersion.replace(/^v/, '');
+      const currentAlphaParsed = semver.parse(currentAlphaClean);
+
+      if (currentAlphaParsed) {
+        const currentAlphaBase = `${currentAlphaParsed.major}.${currentAlphaParsed.minor}.${currentAlphaParsed.patch}`;
+
+        // 如果全局版本更高，使用全局版本；否则使用当前Alpha版本
+        if (semver.gt(globalBase, currentAlphaBase)) {
+          logger.info(`Alpha版本落后，从全局版本 ${globalLatestVersion} 开始升级`);
+          return globalLatestVersion;
+        } else {
+          logger.info(`Alpha版本同步，从当前版本 ${currentAlphaVersion} 继续升级`);
+          return currentAlphaVersion;
+        }
+      }
+
+      return globalLatestVersion;
+    }
 
     case 'beta': {
       // Beta 基于 Alpha 的最新版本进行升级
@@ -429,6 +486,12 @@ function calculateVersionWithLabel(
   logger.info(
     `版本升级分析: 基础版本=${baseVersion}, 当前优先级=${currentPriority}, 标签优先级=${labelPriority_value}`,
   );
+
+  // 特殊处理：如果基础版本来自不同分支类型，重新开始计数
+  if (targetBranch === 'alpha' && currentBranchType !== 'alpha') {
+    logger.info(`检测到基础版本跨分支变化 (${currentBranchType} -> alpha)，重新开始Alpha计数`);
+    return semver.inc(baseVersion, releaseType, 'alpha');
+  }
 
   // 如果标签优先级更高，或者需要跨分支升级，执行版本升级
   if (labelPriority_value > currentPriority || needsBranchUpgrade(currentBranchType, targetBranch)) {
