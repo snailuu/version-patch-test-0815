@@ -28189,13 +28189,20 @@ async function getBaseVersion(targetBranch, versionInfo) {
     case "alpha": {
       const globalLatestVersion = await versionManager.getGlobalHighestVersion();
       const currentAlphaVersion = versionInfo.currentTag || VersionUtils.createDefaultVersion("base");
+      const mainVersion = await versionManager.getLatestVersion("main");
       const globalBase = VersionUtils.getBaseVersionString(globalLatestVersion);
       const currentAlphaBase = VersionUtils.getBaseVersionString(currentAlphaVersion);
-      if (import_semver.default.gt(globalBase, currentAlphaBase)) {
+      const mainBase = mainVersion ? VersionUtils.getBaseVersionString(mainVersion) : "0.0.0";
+      if (mainVersion && import_semver.default.gte(mainBase, currentAlphaBase)) {
+        const nextVersionBase = import_semver.default.inc(mainBase, "patch");
+        const nextVersion = VersionUtils.addVersionPrefix(nextVersionBase || "0.0.1");
+        logger.info(`\u{1F504} \u68C0\u6D4B\u5230\u6B63\u5F0F\u7248 ${mainVersion} \u5DF2\u53D1\u5E03\uFF0CAlpha\u63A8\u8FDB\u5230\u4E0B\u4E00\u7248\u672C\u5468\u671F: ${nextVersion}`);
+        return nextVersion;
+      } else if (import_semver.default.gt(globalBase, currentAlphaBase)) {
         logger.info(`Alpha\u7248\u672C\u843D\u540E\uFF0C\u4ECE\u5168\u5C40\u7248\u672C ${globalLatestVersion} \u5F00\u59CB\u5347\u7EA7`);
         return globalLatestVersion;
       } else {
-        logger.info(`Alpha\u7248\u672C\u9886\u5148\u6216\u540C\u6B65\uFF0C\u4ECE\u5F53\u524D\u7248\u672C ${currentAlphaVersion} \u7EE7\u7EED\u5347\u7EA7`);
+        logger.info(`Alpha\u7248\u672C\u9886\u5148\uFF0C\u4ECE\u5F53\u524D\u7248\u672C ${currentAlphaVersion} \u7EE7\u7EED\u5347\u7EA7`);
         return currentAlphaVersion;
       }
     }
