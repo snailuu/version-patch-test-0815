@@ -29047,10 +29047,50 @@ async function updatePRComment(prNumber, commentBody, identifier) {
     logger.warning(`\u66F4\u65B0 PR \u8BC4\u8BBA\u5931\u8D25: ${error2}`);
   }
 }
+async function replaceVersionPreviewComment(prNumber, commentBody, identifier) {
+  try {
+    const { data: comments } = await octokit.rest.issues.listComments({
+      owner: import_github2.context.repo.owner,
+      repo: import_github2.context.repo.repo,
+      issue_number: prNumber
+    });
+    const versionComments = comments.filter(
+      (comment) => {
+        var _a2, _b;
+        return ((_a2 = comment.user) == null ? void 0 : _a2.type) === "Bot" && ((_b = comment.body) == null ? void 0 : _b.includes(identifier));
+      }
+    );
+    for (const comment of versionComments) {
+      try {
+        await octokit.rest.issues.deleteComment({
+          owner: import_github2.context.repo.owner,
+          repo: import_github2.context.repo.repo,
+          comment_id: comment.id
+        });
+        logger.info(`\u5DF2\u5220\u9664\u65E7\u7684\u7248\u672C\u9884\u89C8\u8BC4\u8BBA #${comment.id}`);
+      } catch (deleteError) {
+        logger.warning(`\u5220\u9664\u8BC4\u8BBA #${comment.id} \u5931\u8D25: ${deleteError}`);
+      }
+    }
+    await octokit.rest.issues.createComment({
+      owner: import_github2.context.repo.owner,
+      repo: import_github2.context.repo.repo,
+      issue_number: prNumber,
+      body: commentBody
+    });
+    if (versionComments.length > 0) {
+      logger.info(`\u5DF2\u5220\u9664 ${versionComments.length} \u4E2A\u65E7\u7248\u672C\u9884\u89C8\u8BC4\u8BBA\uFF0C\u521B\u5EFA\u65B0\u8BC4\u8BBA\u4E8E PR #${prNumber}`);
+    } else {
+      logger.info(`\u5DF2\u5728 PR #${prNumber} \u521B\u5EFA\u7248\u672C\u9884\u89C8\u8BC4\u8BBA`);
+    }
+  } catch (error2) {
+    logger.warning(`\u66FF\u6362\u7248\u672C\u9884\u89C8\u8BC4\u8BBA\u5931\u8D25: ${error2}`);
+  }
+}
 async function createVersionPreviewComment(prNumber, data) {
   try {
     const commentBody = COMMENT_TEMPLATES.VERSION_PREVIEW(data);
-    await updatePRComment(prNumber, commentBody, "## \u{1F4E6} \u7248\u672C\u9884\u89C8");
+    await replaceVersionPreviewComment(prNumber, commentBody, "\u7248\u672C\u7BA1\u7406");
   } catch (error2) {
     throw new ActionError(`\u521B\u5EFA\u7248\u672C\u9884\u89C8\u8BC4\u8BBA\u5931\u8D25: ${error2}`, "createVersionPreviewComment", error2);
   }
@@ -29058,7 +29098,7 @@ async function createVersionPreviewComment(prNumber, data) {
 async function createVersionSkipComment(prNumber, targetBranch, baseVersion) {
   try {
     const commentBody = COMMENT_TEMPLATES.VERSION_SKIP(targetBranch, baseVersion);
-    await updatePRComment(prNumber, commentBody, "## \u23ED\uFE0F \u7248\u672C\u7BA1\u7406\u8DF3\u8FC7");
+    await replaceVersionPreviewComment(prNumber, commentBody, "\u7248\u672C\u7BA1\u7406");
   } catch (error2) {
     throw new ActionError(`\u521B\u5EFA\u7248\u672C\u8DF3\u8FC7\u8BC4\u8BBA\u5931\u8D25: ${error2}`, "createVersionSkipComment", error2);
   }
