@@ -29038,13 +29038,20 @@ async function createErrorComment(prNumber, errorMessage) {
   }
 }
 async function determineReleaseType(pr, targetBranch) {
-  if (pr == null ? void 0 : pr.labels) {
+  logger.info(`\u{1F50D} \u5F00\u59CB\u786E\u5B9A\u7248\u672C\u5347\u7EA7\u7C7B\u578B (PR: ${pr ? `#${pr.number}` : "\u65E0"}, \u5206\u652F: ${targetBranch})`);
+  if ((pr == null ? void 0 : pr.labels) && pr.labels.length > 0) {
     const labelReleaseType = PRUtils.getReleaseTypeFromLabels(pr.labels);
     if (labelReleaseType) {
-      logger.info(`\u2705 \u4F7F\u7528PR\u6807\u7B7E\u63A8\u65AD: ${labelReleaseType}`);
+      logger.info(`\u2705 \u4F7F\u7528PR\u6807\u7B7E\u63A8\u65AD: ${labelReleaseType} (\u6765\u6E90: PR #${pr.number})`);
       return labelReleaseType;
+    } else {
+      const labelNames = pr.labels.map((l) => l.name).join(", ");
+      logger.info(`\u{1F4DD} PR #${pr.number} \u6709\u6807\u7B7E\u4F46\u65E0\u7248\u672C\u6807\u7B7E: [${labelNames}]`);
     }
+  } else if (pr) {
+    logger.info(`\u{1F4DD} PR #${pr.number} \u6CA1\u6709\u6807\u7B7E`);
   }
+  logger.info(`\u{1F50D} \u5C1D\u8BD5\u4ECEcommit\u5386\u53F2\u63A8\u65AD\u7248\u672C\u7C7B\u578B...`);
   const commitReleaseType = await inferReleaseTypeFromCommits(targetBranch);
   if (commitReleaseType) {
     logger.info(`\u{1F916} \u4F7F\u7528commit\u5386\u53F2\u63A8\u65AD: ${commitReleaseType}`);
@@ -29053,8 +29060,14 @@ async function determineReleaseType(pr, targetBranch) {
   if (targetBranch === "alpha") {
     logger.info(`\u{1F3AF} Alpha\u5206\u652F\u667A\u80FD\u63A8\u65AD: prepatch (\u9ED8\u8BA4patch\u5347\u7EA7)`);
     return "prepatch";
+  } else if (targetBranch === "beta") {
+    logger.info(`\u{1F3AF} Beta\u5206\u652F\u667A\u80FD\u63A8\u65AD: prerelease (\u4ECEalpha\u5347\u7EA7)`);
+    return "prerelease";
+  } else if (targetBranch === "main") {
+    logger.info(`\u{1F3AF} Main\u5206\u652F\u667A\u80FD\u63A8\u65AD: patch (\u4ECEbeta\u53D1\u5E03)`);
+    return "patch";
   }
-  logger.info(`\u{1F4DD} \u65E0\u6CD5\u63A8\u65AD\u7248\u672C\u5347\u7EA7\u7C7B\u578B\uFF0C\u5C06\u8DF3\u8FC7\u5347\u7EA7`);
+  logger.info(`\u274C \u65E0\u6CD5\u63A8\u65AD\u7248\u672C\u5347\u7EA7\u7C7B\u578B\uFF0C\u5C06\u8DF3\u8FC7\u5347\u7EA7`);
   return "";
 }
 async function handlePreviewMode(pr, targetBranch, baseVersion, newVersion, releaseType) {
@@ -29096,33 +29109,56 @@ function validateBranch(branch) {
 }
 async function getEventInfo() {
   try {
-    let targetBranch = import_github2.context.ref.split("/").pop();
-    const isDryRun = import_github2.context.eventName === "pull_request";
+    let targetBranch = "";
+    let isDryRun = false;
     let pr = null;
-    if (import_github2.context.payload.pull_request) {
+    let eventType = "push";
+    if (import_github2.context.eventName === "pull_request") {
+      const prPayload = import_github2.context.payload.pull_request;
+      if (!prPayload) {
+        logger.error("PR payload \u4E0D\u5B58\u5728");
+        return null;
+      }
       pr = await getCurrentPR();
       if (!pr || !pr.base) {
         logger.error("\u65E0\u6CD5\u83B7\u53D6\u6709\u6548\u7684 PR \u4FE1\u606F");
         return null;
       }
-      targetBranch = pr.base.ref || import_github2.context.payload.pull_request.base.ref;
-      logger.info(`PR \u4E8B\u4EF6 (\u9884\u89C8\u6A21\u5F0F)\uFF0C\u76EE\u6807\u5206\u652F\u4E3A: ${targetBranch}`);
-    } else if (import_github2.context.eventName === "push") {
-      pr = await getRecentMergedPR(targetBranch);
-      if (pr) {
-        logger.info(`Push \u4E8B\u4EF6 (\u6267\u884C\u6A21\u5F0F)\uFF0C\u627E\u5230\u76F8\u5173PR #${pr.number}\uFF0C\u76EE\u6807\u5206\u652F\u4E3A: ${targetBranch}`);
+      targetBranch = pr.base.ref;
+      if (prPayload.state === "closed" && prPayload.merged === true) {
+        isDryRun = false;
+        eventType = "merge";
+        logger.info(`\u{1F3AF} PR #${pr.number} \u5DF2\u5408\u5E76\u5230 ${targetBranch} (Merge\u9636\u6BB5\u89E6\u53D1)`);
       } else {
-        logger.info(`Push \u4E8B\u4EF6 (\u6267\u884C\u6A21\u5F0F)\uFF0C\u672A\u627E\u5230\u76F8\u5173PR\uFF0C\u5C06\u4F7F\u7528commit\u5206\u6790\uFF0C\u76EE\u6807\u5206\u652F\u4E3A: ${targetBranch}`);
+        isDryRun = true;
+        eventType = "preview";
+        logger.info(`\u{1F441}\uFE0F PR #${pr.number} \u9884\u89C8\u6A21\u5F0F\uFF0C\u76EE\u6807\u5206\u652F: ${targetBranch}`);
       }
+    } else if (import_github2.context.eventName === "push") {
+      targetBranch = import_github2.context.ref.split("/").pop();
+      pr = await getRecentMergedPR(targetBranch);
+      isDryRun = false;
+      eventType = "push";
+      if (pr) {
+        logger.info(`\u{1F504} Push\u4E8B\u4EF6\uFF0C\u627E\u5230\u76F8\u5173PR #${pr.number}\uFF0C\u76EE\u6807\u5206\u652F: ${targetBranch}`);
+      } else {
+        logger.info(`\u{1F504} Push\u4E8B\u4EF6\uFF0C\u672A\u627E\u5230\u76F8\u5173PR\uFF0C\u5C06\u4F7F\u7528commit\u5206\u6790\uFF0C\u76EE\u6807\u5206\u652F: ${targetBranch}`);
+      }
+    } else if (import_github2.context.eventName === "repository_dispatch") {
+      const dispatchPayload = import_github2.context.payload.client_payload;
+      targetBranch = (dispatchPayload == null ? void 0 : dispatchPayload.target_branch) || "main";
+      isDryRun = false;
+      eventType = "push";
+      logger.info(`\u{1F4E1} \u624B\u52A8\u89E6\u53D1\u4E8B\u4EF6\uFF0C\u76EE\u6807\u5206\u652F: ${targetBranch}`);
     } else {
-      logger.info(`\u4E0D\u652F\u6301\u7684\u4E8B\u4EF6\u7C7B\u578B: ${import_github2.context.eventName}`);
+      logger.info(`\u274C \u4E0D\u652F\u6301\u7684\u4E8B\u4EF6\u7C7B\u578B: ${import_github2.context.eventName}`);
       return null;
     }
     if (!validateBranch(targetBranch)) {
-      logger.info(`\u4E0D\u652F\u6301\u7684\u5206\u652F: ${targetBranch}\uFF0C\u8DF3\u8FC7\u7248\u672C\u7BA1\u7406`);
+      logger.info(`\u274C \u4E0D\u652F\u6301\u7684\u5206\u652F: ${targetBranch}\uFF0C\u8DF3\u8FC7\u7248\u672C\u7BA1\u7406`);
       return null;
     }
-    return { targetBranch, isDryRun, pr };
+    return { targetBranch, isDryRun, pr, eventType };
   } catch (error2) {
     throw new ActionError(`\u83B7\u53D6\u4E8B\u4EF6\u4FE1\u606F\u5931\u8D25: ${error2}`, "getEventInfo", error2);
   }
@@ -29143,12 +29179,12 @@ async function run() {
   try {
     const eventInfo = await getEventInfo();
     if (!eventInfo) return;
-    const { targetBranch, isDryRun, pr } = eventInfo;
+    const { targetBranch, isDryRun, pr, eventType } = eventInfo;
     if (!isSupportedBranch(targetBranch)) {
       logger.info(`\u4E0D\u652F\u6301\u7684\u5206\u652F: ${targetBranch}\uFF0C\u8DF3\u8FC7\u7248\u672C\u7BA1\u7406`);
       return;
     }
-    logger.info(`\u76EE\u6807\u5206\u652F: ${targetBranch} ${isDryRun ? "(\u9884\u89C8\u6A21\u5F0F)" : "(\u6267\u884C\u6A21\u5F0F)"}`);
+    logger.info(`\u76EE\u6807\u5206\u652F: ${targetBranch} (${eventType}\u6A21\u5F0F${isDryRun ? " - \u9884\u89C8" : " - \u6267\u884C"})`);
     await configureGitUser();
     const versionInfo = await getVersionInfo(targetBranch);
     const releaseType = await determineReleaseType(pr, targetBranch);

@@ -30,7 +30,7 @@ async function run(): Promise<void> {
     const eventInfo = await getEventInfo();
     if (!eventInfo) return;
 
-    const { targetBranch, isDryRun, pr } = eventInfo;
+    const { targetBranch, isDryRun, pr, eventType } = eventInfo;
 
     // 类型守卫：确保 targetBranch 是支持的分支类型
     if (!isSupportedBranch(targetBranch)) {
@@ -38,7 +38,7 @@ async function run(): Promise<void> {
       return;
     }
 
-    logger.info(`目标分支: ${targetBranch} ${isDryRun ? '(预览模式)' : '(执行模式)'}`);
+    logger.info(`目标分支: ${targetBranch} (${eventType}模式${isDryRun ? ' - 预览' : ' - 执行'})`);
 
     // 2. 配置 Git 用户信息
     await configureGitUser();
@@ -53,7 +53,7 @@ async function run(): Promise<void> {
     // 5. 获取基础版本（用于显示真实的当前版本）
     const baseVersion = await getBaseVersion(targetBranch, versionInfo);
 
-    // 6. 计算新版本号（两种模式使用相同逻辑）
+    // 6. 计算新版本号
     const newVersion = await calculateNewVersion(targetBranch, versionInfo, releaseType);
     
     // 改进日志输出，提供更多调试信息
