@@ -977,6 +977,9 @@ async function run(): Promise<void> {
     const releaseType = getReleaseTypeFromLabel(pr?.labels);
     logger.info(`版本升级类型: ${releaseType}`);
 
+    // 获取基础版本（用于显示真实的当前版本）
+    const baseVersion = await getBaseVersion(targetBranch, versionInfo);
+    
     // 计算新版本号
     const newVersion = await calculateNewVersion(targetBranch, versionInfo, releaseType);
     logger.info(`${isDryRun ? '预览' : '新'}版本: ${newVersion}`);
@@ -993,7 +996,7 @@ async function run(): Promise<void> {
 | 项目 | 值 |
 |------|-----|
 | **目标分支** | \`${targetBranch}\` |
-| **当前版本** | \`${versionInfo.currentTag || '无'}\` |
+| **当前版本** | \`${baseVersion || '无'}\` |
 | **状态** | \`跳过 - 无需升级\` |
 
 > ℹ️ 根据当前分支状态和标签，无需进行版本升级。`;
@@ -1010,7 +1013,7 @@ async function run(): Promise<void> {
       if (prNumber) {
         await createVersionPreviewComment(prNumber, {
           targetBranch,
-          currentVersion: versionInfo.currentTag || undefined,
+          currentVersion: baseVersion || undefined,
           nextVersion: newVersion,
           releaseType,
         });
