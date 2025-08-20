@@ -1,16 +1,21 @@
+import type { ReleaseType } from 'semver';
 import core, { logger } from './core';
 import { configureGitUser, syncBranches, updateVersionAndCreateTag } from './git';
 import { determineReleaseType, getEventInfo, handlePreviewMode } from './pr';
-import { ActionError, isSupportedBranch, type SupportedBranch, type PRData } from './types';
+import { ActionError, isSupportedBranch, type PRData, type SupportedBranch } from './types';
 import { calculateNewVersion, getBaseVersion, getVersionInfo } from './version';
-import type { ReleaseType } from 'semver';
 
 // ==================== 主执行函数 ====================
 
 /**
  * 处理执行模式逻辑
  */
-async function handleExecutionMode(newVersion: string, targetBranch: SupportedBranch, pr: PRData | null, releaseType: ReleaseType | ''): Promise<void> {
+async function handleExecutionMode(
+  newVersion: string,
+  targetBranch: SupportedBranch,
+  pr: PRData | null,
+  releaseType: ReleaseType | '',
+): Promise<void> {
   await updateVersionAndCreateTag(newVersion, targetBranch, pr, releaseType);
   const syncResults = await syncBranches(targetBranch, newVersion);
 
@@ -56,12 +61,14 @@ async function run(): Promise<void> {
 
     // 6. 计算新版本号
     const newVersion = await calculateNewVersion(targetBranch, versionInfo, releaseType);
-    
+
     // 改进日志输出，提供更多调试信息
     if (newVersion) {
       logger.info(`🎯 ${isDryRun ? '预览' : '新'}版本: ${newVersion}`);
     } else {
-      logger.warning(`⚠️ 版本计算结果为空 - 目标分支: ${targetBranch}, 发布类型: ${releaseType || '无'}, 基础版本: ${baseVersion || '无'}`);
+      logger.warning(
+        `⚠️ 版本计算结果为空 - 目标分支: ${targetBranch}, 发布类型: ${releaseType || '无'}, 基础版本: ${baseVersion || '无'}`,
+      );
     }
 
     // 7. 根据模式执行相应操作
@@ -74,7 +81,7 @@ async function run(): Promise<void> {
     } else {
       // 执行模式：无论是否有新版本都要处理
       logger.info('🚀 执行版本更新模式...');
-      
+
       if (newVersion) {
         // 有新版本：更新版本并同步分支 - 传递PR信息给CHANGELOG生成
         await handleExecutionMode(newVersion, targetBranch, pr, releaseType);
@@ -82,10 +89,12 @@ async function run(): Promise<void> {
         logger.info(`✅ 版本更新完成: ${newVersion}`);
       } else {
         // 无新版本：记录详细信息但不阻塞流程
-        logger.info(`ℹ️ 无需版本升级 - 目标分支: ${targetBranch}, 当前版本: ${baseVersion || '无'}, 发布类型: ${releaseType || '无'}`);
+        logger.info(
+          `ℹ️ 无需版本升级 - 目标分支: ${targetBranch}, 当前版本: ${baseVersion || '无'}, 发布类型: ${releaseType || '无'}`,
+        );
         core.setOutput('next-version', '');
       }
-      
+
       core.setOutput('is-preview', 'false');
     }
   } catch (error: unknown) {

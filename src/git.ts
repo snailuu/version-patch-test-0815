@@ -9,8 +9,8 @@ import {
   COMMIT_TEMPLATES,
   ERROR_MESSAGES,
   GIT_USER_CONFIG,
-  type SupportedBranch,
   type PRData,
+  type SupportedBranch,
 } from './types';
 import { VersionUtils } from './version';
 
@@ -145,26 +145,25 @@ async function safePushWithRetry(targetBranch: SupportedBranch, version: string,
         await execGit(['fetch', 'origin', targetBranch]);
         await execGit(['rebase', `origin/${targetBranch}`]);
       }
-      
+
       // 推送分支和标签
       await execGit(['push', 'origin', targetBranch]);
       await execGit(['push', 'origin', version]);
-      
+
       logger.info(`✅ 推送成功 (第${attempt}次尝试)`);
       return;
-      
     } catch (error) {
       if (attempt === maxRetries) {
         logger.error(`❌ 推送失败，已尝试${maxRetries}次: ${error}`);
         throw error;
       }
-      
+
       logger.warning(`⚠️ 推送失败 (第${attempt}/${maxRetries}次)，可能存在并发冲突: ${error}`);
-      
+
       // 等待随机时间避免竞态
       const delay = Math.random() * 2000 + 1000; // 1-3秒随机延迟
       logger.info(`⏳ 等待 ${Math.round(delay)}ms 后重试...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
 }
@@ -174,21 +173,25 @@ async function safePushWithRetry(targetBranch: SupportedBranch, version: string,
 /**
  * 基于PR信息生成CHANGELOG条目
  */
-async function generateChangelogFromPR(pr: PRData | null, version: string, releaseType: ReleaseType | ''): Promise<string> {
+async function generateChangelogFromPR(
+  pr: PRData | null,
+  version: string,
+  releaseType: ReleaseType | '',
+): Promise<string> {
   if (!pr) {
     return `### Changes\n- Version ${version} release\n`;
   }
 
   // PR标签到CHANGELOG类型的映射
   const labelToChangelogType: Record<string, string> = {
-    'major': '💥 Breaking Changes',
-    'minor': '✨ Features', 
-    'patch': '🐛 Bug Fixes',
-    'enhancement': '⚡ Improvements',
-    'performance': '🚀 Performance',
-    'security': '🔒 Security',
-    'documentation': '📚 Documentation',
-    'dependencies': '⬆️ Dependencies'
+    major: '💥 Breaking Changes',
+    minor: '✨ Features',
+    patch: '🐛 Bug Fixes',
+    enhancement: '⚡ Improvements',
+    performance: '🚀 Performance',
+    security: '🔒 Security',
+    documentation: '📚 Documentation',
+    dependencies: '⬆️ Dependencies',
   };
 
   // 从PR标签推断变更类型
@@ -200,10 +203,10 @@ async function generateChangelogFromPR(pr: PRData | null, version: string, relea
         break;
       }
     }
-    
+
     // 如果没找到特定类型，基于版本标签推断
     if (changeType === '📝 Changes') {
-      const versionLabels = pr.labels.map(l => l.name);
+      const versionLabels = pr.labels.map((l) => l.name);
       if (versionLabels.includes('major')) changeType = '💥 Breaking Changes';
       else if (versionLabels.includes('minor')) changeType = '✨ Features';
       else if (versionLabels.includes('patch')) changeType = '🐛 Bug Fixes';
@@ -212,33 +215,40 @@ async function generateChangelogFromPR(pr: PRData | null, version: string, relea
 
   // 构建CHANGELOG条目
   let changelogEntry = `### ${changeType}\n`;
-  
+
   // 添加PR标题和链接
   const prUrl = pr.html_url;
   const prTitle = pr.title || `PR #${pr.number}`;
   changelogEntry += `- ${prTitle} ([#${pr.number}](${prUrl}))\n`;
-  
+
   // 如果PR有body，提取关键信息
   if (pr.body && pr.body.trim()) {
     const body = pr.body.trim();
-    
+
     // 查找特定的section（如 "### Changes", "## What's Changed" 等）
-    const sections = ['### Changes', '## Changes', '### What\'s Changed', '## What\'s Changed', '### Summary', '## Summary'];
+    const sections = [
+      '### Changes',
+      '## Changes',
+      "### What's Changed",
+      "## What's Changed",
+      '### Summary',
+      '## Summary',
+    ];
     for (const section of sections) {
       const sectionIndex = body.indexOf(section);
       if (sectionIndex !== -1) {
         const sectionContent = body.substring(sectionIndex + section.length);
         const nextSectionIndex = sectionContent.search(/^##/m);
-        const content = nextSectionIndex !== -1 
-          ? sectionContent.substring(0, nextSectionIndex) 
-          : sectionContent;
-        
-        const cleanContent = content.trim().split('\n')
-          .filter(line => line.trim())
+        const content = nextSectionIndex !== -1 ? sectionContent.substring(0, nextSectionIndex) : sectionContent;
+
+        const cleanContent = content
+          .trim()
+          .split('\n')
+          .filter((line) => line.trim())
           .slice(0, 5) // 最多5行
-          .map(line => line.startsWith('- ') ? `  ${line}` : `  - ${line}`)
+          .map((line) => (line.startsWith('- ') ? `  ${line}` : `  - ${line}`))
           .join('\n');
-        
+
         if (cleanContent) {
           changelogEntry += cleanContent + '\n';
           break;
@@ -246,23 +256,27 @@ async function generateChangelogFromPR(pr: PRData | null, version: string, relea
       }
     }
   }
-  
+
   return changelogEntry;
 }
 
 /**
  * 更新 CHANGELOG - 基于PR信息生成
  */
-export async function updateChangelog(pr: PRData | null = null, version: string = '', releaseType: ReleaseType | '' = ''): Promise<void> {
+export async function updateChangelog(
+  pr: PRData | null = null,
+  version: string = '',
+  releaseType: ReleaseType | '' = '',
+): Promise<void> {
   try {
     logger.info('开始生成基于PR的 CHANGELOG...');
-    
+
     const currentDate = new Date().toISOString().split('T')[0];
     const versionTag = version.startsWith('v') ? version : `v${version}`;
-    
+
     // 生成基于PR的CHANGELOG条目
     const changelogEntry = await generateChangelogFromPR(pr, version, releaseType);
-    
+
     const newEntry = `## [${versionTag}] - ${currentDate}
 
 ${changelogEntry}
@@ -297,7 +311,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     // 插入新条目到第一个版本记录之前
     const lines = existingContent.split('\n');
     let insertIndex = lines.length;
-    
+
     // 查找第一个版本标题的位置
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].match(/^## \[.*\]/)) {
@@ -305,17 +319,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
         break;
       }
     }
-    
+
     // 插入新条目
     const entryLines = newEntry.split('\n');
     lines.splice(insertIndex, 0, ...entryLines);
-    
+
     // 写回文件
     const newContent = lines.join('\n');
     await exec('sh', ['-c', `cat > CHANGELOG.md << 'EOF'\n${newContent}\nEOF`]);
-    
+
     logger.info(`✅ CHANGELOG 已更新，添加版本 ${versionTag}`);
-    
+
     // 显示新增的内容预览
     try {
       let stdout = '';
@@ -331,10 +345,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     } catch {
       logger.info('无法显示CHANGELOG预览');
     }
-    
   } catch (error) {
     logger.warning(`基于PR的CHANGELOG生成失败: ${error}`);
-    
+
     // 如果失败，使用原来的conventional-changelog逻辑作为备用
     await fallbackToConventionalChangelog();
   }
@@ -346,7 +359,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 async function fallbackToConventionalChangelog(): Promise<void> {
   try {
     logger.info('使用conventional-changelog作为备用方案...');
-    
+
     // 检查是否已安装
     try {
       await exec('npx', ['conventional-changelog-cli', '--version']);
@@ -356,12 +369,15 @@ async function fallbackToConventionalChangelog(): Promise<void> {
 
     await exec('npx', [
       'conventional-changelog-cli',
-      '-p', 'conventionalcommits',
-      '-i', 'CHANGELOG.md',
+      '-p',
+      'conventionalcommits',
+      '-i',
+      'CHANGELOG.md',
       '-s',
-      '-r', '0'
+      '-r',
+      '0',
     ]);
-    
+
     logger.info('✅ 使用conventional-changelog生成完成');
   } catch (error) {
     logger.warning(`备用CHANGELOG生成也失败: ${error}`);
@@ -603,10 +619,10 @@ export async function syncBranches(targetBranch: SupportedBranch, newVersion: st
  * 更新版本并创建标签 - 支持基于PR的CHANGELOG生成
  */
 export async function updateVersionAndCreateTag(
-  newVersion: string, 
+  newVersion: string,
   targetBranch: SupportedBranch,
   pr: PRData | null = null,
-  releaseType: ReleaseType | '' = ''
+  releaseType: ReleaseType | '' = '',
 ): Promise<void> {
   try {
     logger.info('开始执行版本更新...');

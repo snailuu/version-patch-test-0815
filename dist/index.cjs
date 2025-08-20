@@ -28234,12 +28234,21 @@ function calculateVersionWithLabel(baseVersion, targetBranch, releaseType) {
   if (labelPriority_value > currentPriority || needsBranchUpgrade(currentBranchType, targetBranch)) {
     const branchSuffix = targetBranch === "main" ? void 0 : targetBranch;
     return import_semver.default.inc(baseVersion, releaseType, branchSuffix);
+  } else if (labelPriority_value < currentPriority) {
+    logger.info(`\u{1F4CC} \u6807\u7B7E\u4F18\u5148\u7EA7\u8F83\u4F4E(${getReleaseLevel(releaseType)})\uFF0C\u7EF4\u6301\u5F53\u524D\u66F4\u9AD8\u7EA7\u522B\u5E76\u9012\u589E\u9884\u53D1\u5E03\u7248\u672C`);
+    if (currentBranchType === targetBranch) {
+      return import_semver.default.inc(baseVersion, "prerelease", targetBranch);
+    } else {
+      const branchSuffix = targetBranch === "main" ? void 0 : targetBranch;
+      const currentReleaseType = currentPriority === 3 ? "premajor" : currentPriority === 2 ? "preminor" : "prepatch";
+      return import_semver.default.inc(baseVersion, currentReleaseType, branchSuffix);
+    }
   } else {
     if (currentBranchType === targetBranch) {
       return import_semver.default.inc(baseVersion, "prerelease", targetBranch);
     } else {
       const branchSuffix = targetBranch === "main" ? void 0 : targetBranch;
-      return import_semver.default.inc(baseVersion, "patch", branchSuffix);
+      return import_semver.default.inc(baseVersion, releaseType, branchSuffix);
     }
   }
 }
