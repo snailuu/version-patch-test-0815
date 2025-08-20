@@ -472,26 +472,11 @@ function calculateVersionWithLabel(
 }
 
 /**
- * 无标签时的版本升级
+ * 严格的版本升级：只有有标签时才升级，无标签则跳过
  */
 function calculateVersionWithoutLabel(baseVersion: string, targetBranch: SupportedBranch): string | null {
-  if (targetBranch === 'alpha') {
-    return null; // Alpha 必须有标签
-  }
-
-  const parsed = VersionUtils.parseVersion(baseVersion);
-  if (!parsed) return null;
-
-  // Beta 和 Main 分支根据上游版本自动升级
-  if (targetBranch === 'beta') {
-    // 从 alpha 版本生成 beta 版本
-    const baseVersionStr = VersionUtils.getBaseVersionString(baseVersion);
-    return `${baseVersionStr}-beta.0`;
-  } else if (targetBranch === 'main') {
-    // 从 beta 版本生成正式版本
-    return VersionUtils.getBaseVersionString(baseVersion);
-  }
-
+  // 🚫 严格策略：无标签时不进行任何版本升级
+  logger.info(`📛 ${targetBranch} 分支无版本标签，跳过版本升级`);
   return null;
 }
 

@@ -28261,17 +28261,7 @@ function calculateVersionWithLabel(baseVersion, targetBranch, releaseType) {
   }
 }
 function calculateVersionWithoutLabel(baseVersion, targetBranch) {
-  if (targetBranch === "alpha") {
-    return null;
-  }
-  const parsed = VersionUtils.parseVersion(baseVersion);
-  if (!parsed) return null;
-  if (targetBranch === "beta") {
-    const baseVersionStr = VersionUtils.getBaseVersionString(baseVersion);
-    return `${baseVersionStr}-beta.0`;
-  } else if (targetBranch === "main") {
-    return VersionUtils.getBaseVersionString(baseVersion);
-  }
+  logger.info(`\u{1F4DB} ${targetBranch} \u5206\u652F\u65E0\u7248\u672C\u6807\u7B7E\uFF0C\u8DF3\u8FC7\u7248\u672C\u5347\u7EA7`);
   return null;
 }
 function calculateVersionUpgrade(baseVersion, targetBranch, releaseType) {
@@ -29086,26 +29076,18 @@ async function determineReleaseType(pr, targetBranch) {
   if ((pr == null ? void 0 : pr.labels) && pr.labels.length > 0) {
     const labelReleaseType = PRUtils.getReleaseTypeFromLabels(pr.labels);
     if (labelReleaseType) {
-      logger.info(`\u2705 \u4F7F\u7528PR\u6807\u7B7E\u63A8\u65AD: ${labelReleaseType} (\u6765\u6E90: PR #${pr.number})`);
+      logger.info(`\u2705 \u4F7F\u7528PR\u6807\u7B7E: ${labelReleaseType} (\u6765\u6E90: PR #${pr.number})`);
       return labelReleaseType;
     } else {
       const labelNames = pr.labels.map((l) => l.name).join(", ");
-      logger.info(`\u{1F4DD} PR #${pr.number} \u6709\u6807\u7B7E\u4F46\u65E0\u7248\u672C\u6807\u7B7E: [${labelNames}]`);
+      logger.info(`\u{1F4DD} PR #${pr.number} \u6709\u6807\u7B7E\u4F46\u65E0\u7248\u672C\u6807\u7B7E: [${labelNames}]\uFF0C\u8DF3\u8FC7\u7248\u672C\u5347\u7EA7`);
     }
   } else if (pr) {
-    logger.info(`\u{1F4DD} PR #${pr.number} \u6CA1\u6709\u6807\u7B7E\uFF0C\u4F7F\u7528\u667A\u80FD\u63A8\u65AD`);
+    logger.info(`\u{1F4DD} PR #${pr.number} \u6CA1\u6709\u6807\u7B7E\uFF0C\u8DF3\u8FC7\u7248\u672C\u5347\u7EA7`);
+  } else {
+    logger.info(`\u{1F4DD} \u65E0PR\u4FE1\u606F\uFF0C\u8DF3\u8FC7\u7248\u672C\u5347\u7EA7`);
   }
-  if (targetBranch === "alpha") {
-    logger.info(`\u{1F3AF} Alpha\u5206\u652F\u667A\u80FD\u63A8\u65AD: prepatch (\u9ED8\u8BA4patch\u5347\u7EA7)`);
-    return "prepatch";
-  } else if (targetBranch === "beta") {
-    logger.info(`\u{1F3AF} Beta\u5206\u652F\u667A\u80FD\u63A8\u65AD: prerelease (\u4ECEalpha\u5347\u7EA7)`);
-    return "prerelease";
-  } else if (targetBranch === "main") {
-    logger.info(`\u{1F3AF} Main\u5206\u652F\u667A\u80FD\u63A8\u65AD: patch (\u4ECEbeta\u53D1\u5E03)`);
-    return "patch";
-  }
-  logger.info(`\u274C \u65E0\u6CD5\u63A8\u65AD\u7248\u672C\u5347\u7EA7\u7C7B\u578B\uFF0C\u5C06\u8DF3\u8FC7\u5347\u7EA7`);
+  logger.info(`\u274C \u672A\u68C0\u6D4B\u5230\u660E\u786E\u7684\u7248\u672C\u6807\u7B7E (major/minor/patch)\uFF0C\u8DF3\u8FC7\u7248\u672C\u5347\u7EA7`);
   return "";
 }
 async function handlePreviewMode(pr, targetBranch, baseVersion, newVersion, releaseType) {
