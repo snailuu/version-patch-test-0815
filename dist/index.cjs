@@ -28899,15 +28899,23 @@ async function syncDownstream(sourceBranch, targetBranch, sourceVersion) {
   }
 }
 async function syncBranches(targetBranch, newVersion) {
-  if (isAutoSyncCommit()) {
-    logger.info("\u68C0\u6D4B\u5230\u81EA\u52A8\u540C\u6B65\u63D0\u4EA4\uFF0C\u8DF3\u8FC7\u5206\u652F\u540C\u6B65\u907F\u514D\u7EA7\u8054\u89E6\u53D1");
+  const isPushEvent = import_github.context.eventName === "push";
+  if (isPushEvent && isAutoSyncCommit()) {
+    logger.info("\u68C0\u6D4B\u5230Push\u4E8B\u4EF6\u7684\u81EA\u52A8\u540C\u6B65\u63D0\u4EA4\uFF0C\u8DF3\u8FC7\u5206\u652F\u540C\u6B65\u907F\u514D\u7EA7\u8054\u89E6\u53D1");
     return [{ success: true }];
   }
   const results = [];
   if (targetBranch === "main") {
-    logger.info("Main\u5206\u652F\u66F4\u65B0\uFF0C\u5F00\u59CB\u5411\u4E0B\u6E38\u540C\u6B65\u7A33\u5B9A\u4EE3\u7801");
-    const result = await syncDownstream("main", "beta", newVersion);
-    results.push(result);
+    logger.info("Main\u5206\u652F\u66F4\u65B0\uFF0C\u5F00\u59CB\u5B8C\u6574\u5411\u4E0B\u6E38\u540C\u6B65\u7A33\u5B9A\u4EE3\u7801");
+    const betaResult = await syncDownstream("main", "beta", newVersion);
+    results.push(betaResult);
+    if (betaResult.success) {
+      logger.info("Main \u2192 Beta \u540C\u6B65\u6210\u529F\uFF0C\u7EE7\u7EED Beta \u2192 Alpha \u7EA7\u8054\u540C\u6B65");
+      const alphaResult = await syncDownstream("beta", "alpha", newVersion);
+      results.push(alphaResult);
+    } else {
+      logger.warning("Main \u2192 Beta \u540C\u6B65\u5931\u8D25\uFF0C\u8DF3\u8FC7 Beta \u2192 Alpha \u7EA7\u8054\u540C\u6B65");
+    }
   } else if (targetBranch === "beta") {
     logger.info("Beta\u5206\u652F\u66F4\u65B0\uFF0C\u5411Alpha\u540C\u6B65\u6D4B\u8BD5\u4EE3\u7801");
     const result = await syncDownstream("beta", "alpha", newVersion);
