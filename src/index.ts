@@ -1,16 +1,17 @@
 import core, { logger } from './core';
 import { configureGitUser, syncBranches, updateVersionAndCreateTag } from './git';
 import { determineReleaseType, getEventInfo, handlePreviewMode } from './pr';
-import { ActionError, isSupportedBranch, type SupportedBranch } from './types';
+import { ActionError, isSupportedBranch, type SupportedBranch, type PRData } from './types';
 import { calculateNewVersion, getBaseVersion, getVersionInfo } from './version';
+import type { ReleaseType } from 'semver';
 
 // ==================== 主执行函数 ====================
 
 /**
  * 处理执行模式逻辑
  */
-async function handleExecutionMode(newVersion: string, targetBranch: SupportedBranch): Promise<void> {
-  await updateVersionAndCreateTag(newVersion, targetBranch);
+async function handleExecutionMode(newVersion: string, targetBranch: SupportedBranch, pr: PRData | null, releaseType: ReleaseType | ''): Promise<void> {
+  await updateVersionAndCreateTag(newVersion, targetBranch, pr, releaseType);
   const syncResults = await syncBranches(targetBranch, newVersion);
 
   // 检查同步结果
@@ -75,8 +76,8 @@ async function run(): Promise<void> {
       logger.info('🚀 执行版本更新模式...');
       
       if (newVersion) {
-        // 有新版本：更新版本并同步分支
-        await handleExecutionMode(newVersion, targetBranch);
+        // 有新版本：更新版本并同步分支 - 传递PR信息给CHANGELOG生成
+        await handleExecutionMode(newVersion, targetBranch, pr, releaseType);
         core.setOutput('next-version', newVersion);
         logger.info(`✅ 版本更新完成: ${newVersion}`);
       } else {
