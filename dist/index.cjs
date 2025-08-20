@@ -28246,7 +28246,12 @@ async function getBaseVersion(targetBranch, versionInfo) {
       const currentAlphaParsed = import_semver.default.parse(currentAlphaClean);
       if (currentAlphaParsed) {
         const currentAlphaBase = `${currentAlphaParsed.major}.${currentAlphaParsed.minor}.${currentAlphaParsed.patch}`;
-        if (import_semver.default.gt(globalBase, currentAlphaBase)) {
+        const mainVersion = await getLatestTagVersion("");
+        const hasMainRelease = mainVersion !== null;
+        if (hasMainRelease) {
+          logger.info(`\u68C0\u6D4B\u5230Main\u5206\u652F\u6B63\u5F0F\u7248\u672C ${mainVersion}\uFF0CAlpha\u5C06\u57FA\u4E8E\u6B64\u7248\u672C\u8FDB\u884C\u65B0\u529F\u80FD\u5F00\u53D1`);
+          return mainVersion;
+        } else if (import_semver.default.gt(globalBase, currentAlphaBase)) {
           logger.info(`Alpha\u7248\u672C\u843D\u540E\uFF0C\u4ECE\u5168\u5C40\u7248\u672C ${globalLatestVersion} \u5F00\u59CB\u5347\u7EA7`);
           return globalLatestVersion;
         } else {

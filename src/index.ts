@@ -398,11 +398,20 @@ async function getBaseVersion(targetBranch: SupportedBranch, versionInfo: Versio
       if (currentAlphaParsed) {
         const currentAlphaBase = `${currentAlphaParsed.major}.${currentAlphaParsed.minor}.${currentAlphaParsed.patch}`;
 
-        // 如果全局版本更高，使用全局版本；否则使用当前Alpha版本
-        if (semver.gt(globalBase, currentAlphaBase)) {
+        // 检查Main分支是否有正式版本发布
+        const mainVersion = await getLatestTagVersion('');
+        const hasMainRelease = mainVersion !== null;
+
+        if (hasMainRelease) {
+          // 如果Main分支有正式版本，Alpha应该基于Main版本进行新功能开发
+          logger.info(`检测到Main分支正式版本 ${mainVersion}，Alpha将基于此版本进行新功能开发`);
+          return mainVersion;
+        } else if (semver.gt(globalBase, currentAlphaBase)) {
+          // 如果全局版本更高，使用全局版本
           logger.info(`Alpha版本落后，从全局版本 ${globalLatestVersion} 开始升级`);
           return globalLatestVersion;
         } else {
+          // 否则使用当前Alpha版本继续递增
           logger.info(`Alpha版本同步，从当前版本 ${currentAlphaVersion} 继续升级`);
           return currentAlphaVersion;
         }
