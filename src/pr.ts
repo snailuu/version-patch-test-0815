@@ -289,60 +289,12 @@ export async function updatePRComment(prNumber: number, commentBody: string, ide
 }
 
 /**
- * 删除并重新创建版本预览评论（确保只保留一个）
- */
-export async function replaceVersionPreviewComment(prNumber: number, commentBody: string, identifier: string): Promise<void> {
-  try {
-    const { data: comments } = await octokit.rest.issues.listComments({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      issue_number: prNumber,
-    });
-
-    // 查找所有版本预览相关的评论
-    const versionComments = comments.filter(
-      (comment) => comment.user?.type === 'Bot' && comment.body?.includes(identifier),
-    );
-
-    // 删除所有旧的版本预览评论
-    for (const comment of versionComments) {
-      try {
-        await octokit.rest.issues.deleteComment({
-          owner: context.repo.owner,
-          repo: context.repo.repo,
-          comment_id: comment.id,
-        });
-        logger.info(`已删除旧的版本预览评论 #${comment.id}`);
-      } catch (deleteError) {
-        logger.warning(`删除评论 #${comment.id} 失败: ${deleteError}`);
-      }
-    }
-
-    // 创建新的评论
-    await octokit.rest.issues.createComment({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      issue_number: prNumber,
-      body: commentBody,
-    });
-    
-    if (versionComments.length > 0) {
-      logger.info(`已删除 ${versionComments.length} 个旧版本预览评论，创建新评论于 PR #${prNumber}`);
-    } else {
-      logger.info(`已在 PR #${prNumber} 创建版本预览评论`);
-    }
-  } catch (error) {
-    logger.warning(`替换版本预览评论失败: ${error}`);
-  }
-}
-
-/**
  * 创建版本预览评论
  */
 export async function createVersionPreviewComment(prNumber: number, data: VersionPreviewData): Promise<void> {
   try {
     const commentBody = COMMENT_TEMPLATES.VERSION_PREVIEW(data);
-    await replaceVersionPreviewComment(prNumber, commentBody, '版本管理');
+    await updatePRComment(prNumber, commentBody, '## 📦 版本管理');
   } catch (error) {
     throw new ActionError(`创建版本预览评论失败: ${error}`, 'createVersionPreviewComment', error);
   }
@@ -358,7 +310,7 @@ export async function createVersionSkipComment(
 ): Promise<void> {
   try {
     const commentBody = COMMENT_TEMPLATES.VERSION_SKIP(targetBranch, baseVersion);
-    await replaceVersionPreviewComment(prNumber, commentBody, '版本管理');
+    await updatePRComment(prNumber, commentBody, '## 📦 版本管理');
   } catch (error) {
     throw new ActionError(`创建版本跳过评论失败: ${error}`, 'createVersionSkipComment', error);
   }
