@@ -1,3 +1,9 @@
+## [v0.3.2] - 2025-08-20
+
+### 📝 Changes
+- Beta ([#30](https://github.com/snailuu/version-patch-test-0815/pull/30))
+
+
 ## [v0.3.2-beta.0] - 2025-08-20
 
 ### 📝 Changes
@@ -51,6 +57,7 @@
 ### Bug Fixes
 
 * 修改构建流程 ([115042f](https://github.com/snailuu/version-patch-test-0815/commit/115042fd7c4c305694ee7d61f6c209235836ae8c))
+
 
 
 
