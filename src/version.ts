@@ -483,13 +483,7 @@ function calculateVersionUpgrade(
     return null;
   }
 
-  // Alpha 分支必须有标签才能升级
-  if (targetBranch === 'alpha' && !releaseType) {
-    logger.info('Alpha 分支没有版本标签，跳过升级');
-    return null;
-  }
-
-  // 计算新版本
+  // 计算新版本（使用统一的发布类型逻辑）
   let newVersion: string | null = null;
 
   if (releaseType) {

@@ -72,40 +72,14 @@ export class PRUtils {
 
 /**
  * 获取最近合并到目标分支的 PR 信息
- * 在 push 事件中使用，用于获取 PR 标签
+ * @deprecated 不再使用，已改为智能推断版本升级类型
+ * 
+ * 之前在 push 事件中使用，用于获取 PR 标签
+ * 现在统一使用智能推断逻辑，简化流程
  */
 export async function getRecentMergedPR(targetBranch: string): Promise<PRData | null> {
-  try {
-    const { data: commits } = await octokit.rest.repos.listCommits({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      sha: targetBranch,
-      per_page: 10,
-    });
-
-    // 查找最近的 merge commit
-    for (const commit of commits) {
-      if (commit.commit.message.includes('Merge pull request #')) {
-        const prMatch = commit.commit.message.match(/Merge pull request #(\\d+)/);
-        if (prMatch) {
-          const prNumber = parseInt(prMatch[1]);
-          const { data: pr } = await octokit.rest.pulls.get({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            pull_number: prNumber,
-          });
-          logger.info(`找到最近合并的 PR #${prNumber}`);
-          return pr;
-        }
-      }
-    }
-
-    logger.info('未找到最近合并的 PR');
-    return null;
-  } catch (error) {
-    logger.warning(`获取最近合并的 PR 失败: ${error}`);
-    return null;
-  }
+  logger.info('⚠️ getRecentMergedPR 已弃用，现在使用智能推断逻辑');
+  return null;
 }
 
 /**
@@ -292,10 +266,8 @@ export async function getEventInfo(): Promise<{
       targetBranch = pr.base.ref || context.payload.pull_request.base.ref;
       logger.info(`PR 事件 (预览模式)，目标分支为: ${targetBranch}`);
     } else if (context.eventName === 'push') {
-      pr = await getRecentMergedPR(targetBranch);
-      if (!pr) {
-        logger.warning('未找到最近合并的 PR，将跳过标签检查');
-      }
+      // Push事件：PR已经合并，不需要查找PR信息，使用智能推断
+      pr = null;
       logger.info(`Push 事件 (执行模式)，目标分支为: ${targetBranch}`);
     } else {
       logger.info(`不支持的事件类型: ${context.eventName}`);

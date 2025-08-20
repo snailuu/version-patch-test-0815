@@ -46,14 +46,32 @@ async function run(): Promise<void> {
     // 3. 获取版本信息
     const versionInfo = await getVersionInfo(targetBranch);
 
-    // 4. 确定版本升级类型
-    const releaseType = PRUtils.getReleaseTypeFromLabels(pr?.labels);
-    logger.info(`版本升级类型: ${releaseType}`);
+    // 4. 确定版本升级类型（统一两种模式的逻辑）
+    let releaseType = PRUtils.getReleaseTypeFromLabels(pr?.labels);
+    
+    // 如果无法从PR获取标签，使用智能推断（确保两种模式行为一致）
+    if (!releaseType) {
+      switch (targetBranch) {
+        case 'alpha':
+          releaseType = 'prepatch'; // Alpha分支默认patch升级
+          logger.info(`🤖 智能推断版本升级类型: ${releaseType} (Alpha分支默认)`);
+          break;
+        case 'beta':
+        case 'main':
+          // Beta和Main分支可以自动升级，不需要标签
+          logger.info(`📋 ${targetBranch}分支将使用自动升级逻辑`);
+          break;
+        default:
+          logger.info(`📋 版本升级类型: 无`);
+      }
+    } else {
+      logger.info(`📋 版本升级类型: ${releaseType}`);
+    }
 
     // 5. 获取基础版本（用于显示真实的当前版本）
     const baseVersion = await getBaseVersion(targetBranch, versionInfo);
 
-    // 6. 计算新版本号
+    // 6. 计算新版本号（两种模式使用相同逻辑）
     const newVersion = await calculateNewVersion(targetBranch, versionInfo, releaseType);
     
     // 改进日志输出，提供更多调试信息
