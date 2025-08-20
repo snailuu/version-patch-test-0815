@@ -1,17 +1,11 @@
 on:
-  push:
-    branches:
-      - main
-      - alpha
-      - beta
+  # 🎯 只保留 Pull Request 事件：预览 + merge执行
   pull_request:
     branches:
       - main
       - alpha
       - beta
-    types: [opened, synchronize, reopened, labeled, unlabeled]
-  repository_dispatch:
-    types: [label-changed]
+    types: [opened, synchronize, reopened, labeled, unlabeled, closed]
 
 jobs:
   build:
@@ -48,7 +42,13 @@ jobs:
 
   version-path:
     runs-on: ubuntu-latest
-    if: ${{ (github.event_name == 'pull_request' && github.event.pull_request.labels.*) || github.event_name == 'push' || github.event_name == 'repository_dispatch' }}
+    # 🎯 简化条件：预览模式（有标签） + 执行模式（PR合并）
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]') && 
+      github.event_name == 'pull_request' && (
+        (github.event.action != 'closed' && github.event.pull_request.labels.*) ||
+        (github.event.action == 'closed' && github.event.pull_request.merged == true)
+      )
     needs: build
     permissions:
       contents: write
