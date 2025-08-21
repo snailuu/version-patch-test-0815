@@ -454,11 +454,10 @@ function calculateVersionWithLabel(
   } else {
     // 🔧 修复：同级别时的处理逻辑
     if (currentBranchType === targetBranch) {
-      // 同分支且同级别：对于Alpha分支，如果有明确的版本标签，应该创建新版本而不是递增
-      if (targetBranch === 'alpha' && releaseType !== 'prerelease') {
-        logger.info(`🔄 Alpha分支检测到明确版本标签(${releaseType})，创建新版本而非递增预发布`);
-        const branchSuffix = targetBranch === 'main' ? undefined : targetBranch;
-        return semver.inc(baseVersion, releaseType, branchSuffix);
+      // 同分支且同级别：Alpha分支始终递增预发布版本，除非已合并到beta
+      if (targetBranch === 'alpha') {
+        logger.info(`🔄 Alpha分支同版本级别，递增预发布版本号`);
+        return semver.inc(baseVersion, 'prerelease', targetBranch);
       } else {
         // 其他情况：递增预发布版本
         return semver.inc(baseVersion, 'prerelease', targetBranch);
