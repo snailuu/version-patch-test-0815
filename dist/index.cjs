@@ -26162,7 +26162,7 @@ var init_types = __esm({
       alpha: "0.0.0-alpha.0"
     };
     COMMENT_TEMPLATES = {
-      /** 版本预览评论模板 */
+      /** 版本管理评论模板 */
       VERSION_PREVIEW: (data) => `## \u{1F4E6} \u7248\u672C\u7BA1\u7406
 
 | \u9879\u76EE | \u503C |
@@ -28249,10 +28249,9 @@ function calculateVersionWithLabel(baseVersion, targetBranch, releaseType) {
     }
   } else {
     if (currentBranchType === targetBranch) {
-      if (targetBranch === "alpha" && releaseType !== "prerelease") {
-        logger.info(`\u{1F504} Alpha\u5206\u652F\u68C0\u6D4B\u5230\u660E\u786E\u7248\u672C\u6807\u7B7E(${releaseType})\uFF0C\u521B\u5EFA\u65B0\u7248\u672C\u800C\u975E\u9012\u589E\u9884\u53D1\u5E03`);
-        const branchSuffix = targetBranch === "main" ? void 0 : targetBranch;
-        return import_semver.default.inc(baseVersion, releaseType, branchSuffix);
+      if (targetBranch === "alpha") {
+        logger.info(`\u{1F504} Alpha\u5206\u652F\u540C\u7248\u672C\u7EA7\u522B\uFF0C\u9012\u589E\u9884\u53D1\u5E03\u7248\u672C\u53F7`);
+        return import_semver.default.inc(baseVersion, "prerelease", targetBranch);
       } else {
         return import_semver.default.inc(baseVersion, "prerelease", targetBranch);
       }
@@ -29054,7 +29053,7 @@ async function createVersionPreviewComment(prNumber, data) {
     const commentBody = COMMENT_TEMPLATES.VERSION_PREVIEW(data);
     await updatePRComment(prNumber, commentBody, "## \u{1F4E6} \u7248\u672C\u7BA1\u7406");
   } catch (error2) {
-    throw new ActionError(`\u521B\u5EFA\u7248\u672C\u9884\u89C8\u8BC4\u8BBA\u5931\u8D25: ${error2}`, "createVersionPreviewComment", error2);
+    throw new ActionError(`\u521B\u5EFA\u7248\u672C\u7BA1\u7406\u8BC4\u8BBA\u5931\u8D25: ${error2}`, "createVersionPreviewComment", error2);
   }
 }
 async function createVersionSkipComment(prNumber, targetBranch, baseVersion) {
