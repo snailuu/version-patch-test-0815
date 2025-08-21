@@ -26163,7 +26163,7 @@ var init_types = __esm({
     };
     COMMENT_TEMPLATES = {
       /** 版本预览评论模板 */
-      VERSION_PREVIEW: (data) => `## \u{1F4E6} \u7248\u672C\u9884\u89C8
+      VERSION_PREVIEW: (data) => `## \u{1F4E6} \u7248\u672C\u7BA1\u7406
 
 | \u9879\u76EE | \u503C |
 |------|-----|
@@ -26174,13 +26174,15 @@ var init_types = __esm({
 
 > \u2139\uFE0F \u8FD9\u662F\u9884\u89C8\u6A21\u5F0F\uFF0C\u5408\u5E76 PR \u540E\u5C06\u81EA\u52A8\u521B\u5EFA tag \u5E76\u66F4\u65B0\u7248\u672C\u3002`,
       /** 错误评论模板 */
-      ERROR: (errorMessage) => `## \u274C \u7248\u672C\u7BA1\u7406\u9519\u8BEF
+      ERROR: (errorMessage) => `## \u{1F4E6} \u7248\u672C\u7BA1\u7406
+
+\u274C **\u9519\u8BEF\u4FE1\u606F**
 
 ${errorMessage}
 
 > \u8BF7\u786E\u4FDD\u5728\u521B\u5EFA\u65B0\u529F\u80FD\u4E4B\u524D\uFF0C\u6240\u6709\u5DF2\u6709\u529F\u80FD\u90FD\u5DF2\u5B8C\u6210\u5B8C\u6574\u7684\u53D1\u5E03\u6D41\u7A0B\uFF08alpha \u2192 beta \u2192 main\uFF09\u3002`,
       /** 版本跳过模板 */
-      VERSION_SKIP: (targetBranch, baseVersion) => `## \u23ED\uFE0F \u7248\u672C\u7BA1\u7406\u8DF3\u8FC7
+      VERSION_SKIP: (targetBranch, baseVersion) => `## \u{1F4E6} \u7248\u672C\u7BA1\u7406
 
 | \u9879\u76EE | \u503C |
 |------|-----|
@@ -28247,7 +28249,13 @@ function calculateVersionWithLabel(baseVersion, targetBranch, releaseType) {
     }
   } else {
     if (currentBranchType === targetBranch) {
-      return import_semver.default.inc(baseVersion, "prerelease", targetBranch);
+      if (targetBranch === "alpha" && releaseType !== "prerelease") {
+        logger.info(`\u{1F504} Alpha\u5206\u652F\u68C0\u6D4B\u5230\u660E\u786E\u7248\u672C\u6807\u7B7E(${releaseType})\uFF0C\u521B\u5EFA\u65B0\u7248\u672C\u800C\u975E\u9012\u589E\u9884\u53D1\u5E03`);
+        const branchSuffix = targetBranch === "main" ? void 0 : targetBranch;
+        return import_semver.default.inc(baseVersion, releaseType, branchSuffix);
+      } else {
+        return import_semver.default.inc(baseVersion, "prerelease", targetBranch);
+      }
     } else {
       const branchSuffix = targetBranch === "main" ? void 0 : targetBranch;
       return import_semver.default.inc(baseVersion, releaseType, branchSuffix);
@@ -28255,17 +28263,7 @@ function calculateVersionWithLabel(baseVersion, targetBranch, releaseType) {
   }
 }
 function calculateVersionWithoutLabel(baseVersion, targetBranch) {
-  if (targetBranch === "alpha") {
-    return null;
-  }
-  const parsed = VersionUtils.parseVersion(baseVersion);
-  if (!parsed) return null;
-  if (targetBranch === "beta") {
-    const baseVersionStr = VersionUtils.getBaseVersionString(baseVersion);
-    return `${baseVersionStr}-beta.0`;
-  } else if (targetBranch === "main") {
-    return VersionUtils.getBaseVersionString(baseVersion);
-  }
+  logger.info(`\u{1F4DB} ${targetBranch} \u5206\u652F\u65E0\u7248\u672C\u6807\u7B7E\uFF0C\u8DF3\u8FC7\u7248\u672C\u5347\u7EA7`);
   return null;
 }
 function calculateVersionUpgrade(baseVersion, targetBranch, releaseType) {
@@ -29054,7 +29052,7 @@ async function updatePRComment(prNumber, commentBody, identifier) {
 async function createVersionPreviewComment(prNumber, data) {
   try {
     const commentBody = COMMENT_TEMPLATES.VERSION_PREVIEW(data);
-    await updatePRComment(prNumber, commentBody, "## \u{1F4E6} \u7248\u672C\u9884\u89C8");
+    await updatePRComment(prNumber, commentBody, "## \u{1F4E6} \u7248\u672C\u7BA1\u7406");
   } catch (error2) {
     throw new ActionError(`\u521B\u5EFA\u7248\u672C\u9884\u89C8\u8BC4\u8BBA\u5931\u8D25: ${error2}`, "createVersionPreviewComment", error2);
   }
@@ -29062,7 +29060,7 @@ async function createVersionPreviewComment(prNumber, data) {
 async function createVersionSkipComment(prNumber, targetBranch, baseVersion) {
   try {
     const commentBody = COMMENT_TEMPLATES.VERSION_SKIP(targetBranch, baseVersion);
-    await updatePRComment(prNumber, commentBody, "## \u23ED\uFE0F \u7248\u672C\u7BA1\u7406\u8DF3\u8FC7");
+    await updatePRComment(prNumber, commentBody, "## \u{1F4E6} \u7248\u672C\u7BA1\u7406");
   } catch (error2) {
     throw new ActionError(`\u521B\u5EFA\u7248\u672C\u8DF3\u8FC7\u8BC4\u8BBA\u5931\u8D25: ${error2}`, "createVersionSkipComment", error2);
   }
@@ -29070,7 +29068,7 @@ async function createVersionSkipComment(prNumber, targetBranch, baseVersion) {
 async function createErrorComment(prNumber, errorMessage) {
   try {
     const commentBody = COMMENT_TEMPLATES.ERROR(errorMessage);
-    await updatePRComment(prNumber, commentBody, "## \u274C \u7248\u672C\u7BA1\u7406\u9519\u8BEF");
+    await updatePRComment(prNumber, commentBody, "## \u{1F4E6} \u7248\u672C\u7BA1\u7406");
   } catch (error2) {
     logger.warning(`\u521B\u5EFA\u9519\u8BEF\u8BC4\u8BBA\u5931\u8D25: ${error2}`);
   }
@@ -29080,26 +29078,18 @@ async function determineReleaseType(pr, targetBranch) {
   if ((pr == null ? void 0 : pr.labels) && pr.labels.length > 0) {
     const labelReleaseType = PRUtils.getReleaseTypeFromLabels(pr.labels);
     if (labelReleaseType) {
-      logger.info(`\u2705 \u4F7F\u7528PR\u6807\u7B7E\u63A8\u65AD: ${labelReleaseType} (\u6765\u6E90: PR #${pr.number})`);
+      logger.info(`\u2705 \u4F7F\u7528PR\u6807\u7B7E: ${labelReleaseType} (\u6765\u6E90: PR #${pr.number})`);
       return labelReleaseType;
     } else {
       const labelNames = pr.labels.map((l) => l.name).join(", ");
-      logger.info(`\u{1F4DD} PR #${pr.number} \u6709\u6807\u7B7E\u4F46\u65E0\u7248\u672C\u6807\u7B7E: [${labelNames}]`);
+      logger.info(`\u{1F4DD} PR #${pr.number} \u6709\u6807\u7B7E\u4F46\u65E0\u7248\u672C\u6807\u7B7E: [${labelNames}]\uFF0C\u8DF3\u8FC7\u7248\u672C\u5347\u7EA7`);
     }
   } else if (pr) {
-    logger.info(`\u{1F4DD} PR #${pr.number} \u6CA1\u6709\u6807\u7B7E\uFF0C\u4F7F\u7528\u667A\u80FD\u63A8\u65AD`);
+    logger.info(`\u{1F4DD} PR #${pr.number} \u6CA1\u6709\u6807\u7B7E\uFF0C\u8DF3\u8FC7\u7248\u672C\u5347\u7EA7`);
+  } else {
+    logger.info(`\u{1F4DD} \u65E0PR\u4FE1\u606F\uFF0C\u8DF3\u8FC7\u7248\u672C\u5347\u7EA7`);
   }
-  if (targetBranch === "alpha") {
-    logger.info(`\u{1F3AF} Alpha\u5206\u652F\u667A\u80FD\u63A8\u65AD: prepatch (\u9ED8\u8BA4patch\u5347\u7EA7)`);
-    return "prepatch";
-  } else if (targetBranch === "beta") {
-    logger.info(`\u{1F3AF} Beta\u5206\u652F\u667A\u80FD\u63A8\u65AD: prerelease (\u4ECEalpha\u5347\u7EA7)`);
-    return "prerelease";
-  } else if (targetBranch === "main") {
-    logger.info(`\u{1F3AF} Main\u5206\u652F\u667A\u80FD\u63A8\u65AD: patch (\u4ECEbeta\u53D1\u5E03)`);
-    return "patch";
-  }
-  logger.info(`\u274C \u65E0\u6CD5\u63A8\u65AD\u7248\u672C\u5347\u7EA7\u7C7B\u578B\uFF0C\u5C06\u8DF3\u8FC7\u5347\u7EA7`);
+  logger.info(`\u274C \u672A\u68C0\u6D4B\u5230\u660E\u786E\u7684\u7248\u672C\u6807\u7B7E (major/minor/patch)\uFF0C\u8DF3\u8FC7\u7248\u672C\u5347\u7EA7`);
   return "";
 }
 async function handlePreviewMode(pr, targetBranch, baseVersion, newVersion, releaseType) {

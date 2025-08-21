@@ -452,9 +452,17 @@ function calculateVersionWithLabel(
       return semver.inc(baseVersion, currentReleaseType, branchSuffix);
     }
   } else {
-    // 同级别：递增预发布版本
+    // 🔧 修复：同级别时的处理逻辑
     if (currentBranchType === targetBranch) {
-      return semver.inc(baseVersion, 'prerelease', targetBranch);
+      // 同分支且同级别：对于Alpha分支，如果有明确的版本标签，应该创建新版本而不是递增
+      if (targetBranch === 'alpha' && releaseType !== 'prerelease') {
+        logger.info(`🔄 Alpha分支检测到明确版本标签(${releaseType})，创建新版本而非递增预发布`);
+        const branchSuffix = targetBranch === 'main' ? undefined : targetBranch;
+        return semver.inc(baseVersion, releaseType, branchSuffix);
+      } else {
+        // 其他情况：递增预发布版本
+        return semver.inc(baseVersion, 'prerelease', targetBranch);
+      }
     } else {
       // 跨分支：重新开始计数
       const branchSuffix = targetBranch === 'main' ? undefined : targetBranch;
@@ -464,26 +472,11 @@ function calculateVersionWithLabel(
 }
 
 /**
- * 无标签时的版本升级
+ * 严格的版本升级：只有有标签时才升级，无标签则跳过
  */
 function calculateVersionWithoutLabel(baseVersion: string, targetBranch: SupportedBranch): string | null {
-  if (targetBranch === 'alpha') {
-    return null; // Alpha 必须有标签
-  }
-
-  const parsed = VersionUtils.parseVersion(baseVersion);
-  if (!parsed) return null;
-
-  // Beta 和 Main 分支根据上游版本自动升级
-  if (targetBranch === 'beta') {
-    // 从 alpha 版本生成 beta 版本
-    const baseVersionStr = VersionUtils.getBaseVersionString(baseVersion);
-    return `${baseVersionStr}-beta.0`;
-  } else if (targetBranch === 'main') {
-    // 从 beta 版本生成正式版本
-    return VersionUtils.getBaseVersionString(baseVersion);
-  }
-
+  // 🚫 严格策略：无标签时不进行任何版本升级
+  logger.info(`📛 ${targetBranch} 分支无版本标签，跳过版本升级`);
   return null;
 }
 

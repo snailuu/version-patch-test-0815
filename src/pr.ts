@@ -294,7 +294,7 @@ export async function updatePRComment(prNumber: number, commentBody: string, ide
 export async function createVersionPreviewComment(prNumber: number, data: VersionPreviewData): Promise<void> {
   try {
     const commentBody = COMMENT_TEMPLATES.VERSION_PREVIEW(data);
-    await updatePRComment(prNumber, commentBody, '## 📦 版本预览');
+    await updatePRComment(prNumber, commentBody, '## 📦 版本管理');
   } catch (error) {
     throw new ActionError(`创建版本预览评论失败: ${error}`, 'createVersionPreviewComment', error);
   }
@@ -310,7 +310,7 @@ export async function createVersionSkipComment(
 ): Promise<void> {
   try {
     const commentBody = COMMENT_TEMPLATES.VERSION_SKIP(targetBranch, baseVersion);
-    await updatePRComment(prNumber, commentBody, '## ⏭️ 版本管理跳过');
+    await updatePRComment(prNumber, commentBody, '## 📦 版本管理');
   } catch (error) {
     throw new ActionError(`创建版本跳过评论失败: ${error}`, 'createVersionSkipComment', error);
   }
@@ -322,46 +322,37 @@ export async function createVersionSkipComment(
 export async function createErrorComment(prNumber: number, errorMessage: string): Promise<void> {
   try {
     const commentBody = COMMENT_TEMPLATES.ERROR(errorMessage);
-    await updatePRComment(prNumber, commentBody, '## ❌ 版本管理错误');
+    await updatePRComment(prNumber, commentBody, '## 📦 版本管理');
   } catch (error) {
     logger.warning(`创建错误评论失败: ${error}`);
   }
 }
 
 /**
- * 简化策略：确定版本升级类型 - 专门为merge触发优化
- * 优先级：PR标签 > 智能推断（merge时总是有PR信息，无需commit分析）
+ * 严格策略：确定版本升级类型 - 只基于PR标签，无智能推断
+ * 要求：必须有明确的版本标签（major/minor/patch）才进行版本升级
  */
 export async function determineReleaseType(pr: PRData | null, targetBranch: string): Promise<ReleaseType | ''> {
   logger.info(`🔍 开始确定版本升级类型 (PR: ${pr ? `#${pr.number}` : '无'}, 分支: ${targetBranch})`);
 
-  // 1. 优先使用PR标签（merge阶段总是有完整PR信息）
+  // 🎯 严格要求：只基于PR标签进行版本升级
   if (pr?.labels && pr.labels.length > 0) {
     const labelReleaseType = PRUtils.getReleaseTypeFromLabels(pr.labels);
     if (labelReleaseType) {
-      logger.info(`✅ 使用PR标签推断: ${labelReleaseType} (来源: PR #${pr.number})`);
+      logger.info(`✅ 使用PR标签: ${labelReleaseType} (来源: PR #${pr.number})`);
       return labelReleaseType;
     } else {
       const labelNames = pr.labels.map((l) => l.name).join(', ');
-      logger.info(`📝 PR #${pr.number} 有标签但无版本标签: [${labelNames}]`);
+      logger.info(`📝 PR #${pr.number} 有标签但无版本标签: [${labelNames}]，跳过版本升级`);
     }
   } else if (pr) {
-    logger.info(`📝 PR #${pr.number} 没有标签，使用智能推断`);
+    logger.info(`📝 PR #${pr.number} 没有标签，跳过版本升级`);
+  } else {
+    logger.info(`📝 无PR信息，跳过版本升级`);
   }
 
-  // 2. 基于分支特性的智能推断
-  if (targetBranch === 'alpha') {
-    logger.info(`🎯 Alpha分支智能推断: prepatch (默认patch升级)`);
-    return 'prepatch';
-  } else if (targetBranch === 'beta') {
-    logger.info(`🎯 Beta分支智能推断: prerelease (从alpha升级)`);
-    return 'prerelease';
-  } else if (targetBranch === 'main') {
-    logger.info(`🎯 Main分支智能推断: patch (从beta发布)`);
-    return 'patch';
-  }
-
-  logger.info(`❌ 无法推断版本升级类型，将跳过升级`);
+  // 🚫 移除智能推断：严格要求明确的版本标签
+  logger.info(`❌ 未检测到明确的版本标签 (major/minor/patch)，跳过版本升级`);
   return '';
 }
 
