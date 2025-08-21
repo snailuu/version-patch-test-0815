@@ -1,3 +1,9 @@
+## [v0.4.0-alpha.1] - 2025-08-21
+
+### 🐛 Bug Fixes
+- fix:new commit ([#34](https://github.com/snailuu/version-patch-test-0815/pull/34))
+
+
 ## [v0.4.0-alpha.0] - 2025-08-21
 
 ### ✨ Features
@@ -75,6 +81,7 @@
 ### Bug Fixes
 
 * 修改构建流程 ([115042f](https://github.com/snailuu/version-patch-test-0815/commit/115042fd7c4c305694ee7d61f6c209235836ae8c))
+
 
 
 
