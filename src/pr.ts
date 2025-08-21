@@ -289,14 +289,14 @@ export async function updatePRComment(prNumber: number, commentBody: string, ide
 }
 
 /**
- * 创建版本预览评论
+ * 创建版本管理评论
  */
 export async function createVersionPreviewComment(prNumber: number, data: VersionPreviewData): Promise<void> {
   try {
     const commentBody = COMMENT_TEMPLATES.VERSION_PREVIEW(data);
     await updatePRComment(prNumber, commentBody, '## 📦 版本管理');
   } catch (error) {
-    throw new ActionError(`创建版本预览评论失败: ${error}`, 'createVersionPreviewComment', error);
+    throw new ActionError(`创建版本管理评论失败: ${error}`, 'createVersionPreviewComment', error);
   }
 }
 
@@ -386,7 +386,7 @@ export async function handlePreviewMode(
       // 显示跳过信息
       await createVersionSkipComment(prNumber, targetBranch, baseVersion);
     } else {
-      // 显示版本预览
+      // 显示版本管理
       await createVersionPreviewComment(prNumber, {
         targetBranch,
         currentVersion: baseVersion || undefined,

@@ -57,7 +57,7 @@ export const DEFAULT_VERSIONS = {
 
 /** 评论模板 */
 export const COMMENT_TEMPLATES = {
-  /** 版本预览评论模板 */
+  /** 版本管理评论模板 */
   VERSION_PREVIEW: (data: VersionPreviewData) => `## 📦 版本管理
 
 | 项目 | 值 |
