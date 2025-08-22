@@ -341,6 +341,7 @@ interface VersionUpgradeContext {
   hasLabel: boolean;
   labelPriority: number;
   currentPriority: number;
+  sourceBranch?: string; // 新增：源分支信息
 }
 
 /**
@@ -350,6 +351,7 @@ function createUpgradeContext(
   baseVersion: string,
   targetBranch: SupportedBranch,
   releaseType: ReleaseType | '',
+  sourceBranch?: string,
 ): VersionUpgradeContext | null {
   const parsed = VersionUtils.parseVersion(baseVersion);
   if (!parsed) return null;
@@ -357,7 +359,7 @@ function createUpgradeContext(
   const isPrerelease = parsed.prerelease && parsed.prerelease.length > 0;
   const currentBranchType = isPrerelease ? (parsed.prerelease[0] as string) : 'release';
   const hasLabel = !!releaseType;
-  
+
   const labelPriorityMap = { patch: 1, minor: 2, major: 3 };
   const labelPriority = hasLabel ? labelPriorityMap[getReleaseLevel(releaseType)] : 0;
   const currentPriority = getCurrentVersionPriority(parsed);
@@ -371,6 +373,7 @@ function createUpgradeContext(
     hasLabel,
     labelPriority,
     currentPriority,
+    sourceBranch,
   };
 }
 
@@ -454,10 +457,10 @@ class BetaFromAlphaStrategy implements VersionUpgradeStrategy {
   async execute(context: VersionUpgradeContext): Promise<string | null> {
     const { baseVersion, hasLabel, releaseType } = context;
     const alphaBaseVersion = VersionUtils.getBaseVersionString(baseVersion);
-    
+
     // 获取当前Beta分支的版本
     const currentBetaVersion = await versionManager.getLatestVersion('beta');
-    
+
     if (!currentBetaVersion) {
       // 没有Beta版本，直接转换
       const betaVersion = `${alphaBaseVersion}-beta.0`;
@@ -503,7 +506,7 @@ class BetaInternalStrategy implements VersionUpgradeStrategy {
 
   execute(context: VersionUpgradeContext): string | null {
     const { baseVersion, hasLabel, releaseType } = context;
-    
+
     if (hasLabel) {
       // 有标签：根据标签类型升级
       logger.info(`🔼 Beta版本根据标签 ${releaseType} 升级`);
@@ -528,7 +531,7 @@ class BetaFromReleaseStrategy implements VersionUpgradeStrategy {
 
   execute(context: VersionUpgradeContext): string | null {
     const { baseVersion, hasLabel, releaseType } = context;
-    
+
     if (hasLabel) {
       // 有标签：根据标签创建Beta版本
       logger.info(`🔼 从正式版本 ${baseVersion} 根据标签 ${releaseType} 创建Beta版本`);
@@ -544,6 +547,29 @@ class BetaFromReleaseStrategy implements VersionUpgradeStrategy {
 }
 
 /**
+ * Beta分支非Alpha源策略 - 当目标分支为beta但源分支不是alpha时增加计数
+ */
+class BetaFromNonAlphaStrategy implements VersionUpgradeStrategy {
+  canHandle(context: VersionUpgradeContext): boolean {
+    return (
+      context.targetBranch === 'beta' &&
+      context.currentBranchType === 'beta' &&
+      context.sourceBranch != null &&
+      !context.sourceBranch.includes('alpha')
+    );
+  }
+
+  execute(context: VersionUpgradeContext): string | null {
+    const { baseVersion, sourceBranch } = context;
+
+    logger.info(`🔧 Beta分支非Alpha源修复 (源分支: ${sourceBranch})，增加Beta计数`);
+    return semver.inc(baseVersion, 'prerelease', 'beta');
+  }
+
+  description = 'Beta分支非Alpha源时增加计数（修复场景）';
+}
+
+/**
  * Main分支从Beta策略 - Beta → Release (仅接受Beta来源)
  */
 class MainFromBetaStrategy implements VersionUpgradeStrategy {
@@ -554,10 +580,10 @@ class MainFromBetaStrategy implements VersionUpgradeStrategy {
   async execute(context: VersionUpgradeContext): Promise<string | null> {
     const { baseVersion, hasLabel, releaseType } = context;
     const betaBaseVersion = VersionUtils.getBaseVersionString(baseVersion);
-    
+
     // 获取当前Main分支的版本
     const currentMainVersion = await versionManager.getLatestVersion('main');
-    
+
     if (!currentMainVersion) {
       // 没有Main版本，直接转换
       logger.info(`🔄 首次从Beta转换为正式版: ${betaBaseVersion}`);
@@ -601,7 +627,7 @@ class MainInternalStrategy implements VersionUpgradeStrategy {
 
   execute(context: VersionUpgradeContext): string | null {
     const { baseVersion, hasLabel, releaseType } = context;
-    
+
     if (hasLabel) {
       // 有标签：根据标签升级
       logger.info(`🔼 正式版本根据标签 ${releaseType} 升级`);
@@ -617,6 +643,29 @@ class MainInternalStrategy implements VersionUpgradeStrategy {
 }
 
 /**
+ * Main分支非Beta源策略 - 当目标分支为main但源分支不是beta时增加补丁号
+ */
+class MainFromNonBetaStrategy implements VersionUpgradeStrategy {
+  canHandle(context: VersionUpgradeContext): boolean {
+    return (
+      context.targetBranch === 'main' &&
+      context.currentBranchType === 'release' &&
+      context.sourceBranch != null &&
+      !context.sourceBranch.includes('beta')
+    );
+  }
+
+  execute(context: VersionUpgradeContext): string | null {
+    const { baseVersion, sourceBranch } = context;
+
+    logger.info(`🔧 Main分支非Beta源修复 (源分支: ${sourceBranch})，增加补丁号`);
+    return semver.inc(baseVersion, 'patch');
+  }
+
+  description = 'Main分支非Beta源时增加补丁号（修复场景）';
+}
+
+/**
  * 版本升级策略管理器
  */
 class VersionUpgradeManager {
@@ -624,9 +673,11 @@ class VersionUpgradeManager {
     new AlphaNoLabelStrategy(),
     new AlphaWithLabelStrategy(),
     new BetaFromAlphaStrategy(),
+    new BetaFromNonAlphaStrategy(), // 新增：Beta分支非Alpha源策略
     new BetaInternalStrategy(),
     new BetaFromReleaseStrategy(),
     new MainFromBetaStrategy(),
+    new MainFromNonBetaStrategy(), // 新增：Main分支非Beta源策略
     new MainInternalStrategy(),
   ];
 
@@ -641,7 +692,7 @@ class VersionUpgradeManager {
         return await Promise.resolve(result);
       }
     }
-    
+
     logger.error(`❌ 未找到适用的版本升级策略`);
     return null;
   }
@@ -650,7 +701,7 @@ class VersionUpgradeManager {
    * 获取所有策略的描述（用于调试）
    */
   getStrategiesDescription(): string[] {
-    return this.strategies.map(s => s.description);
+    return this.strategies.map((s) => s.description);
   }
 }
 
@@ -682,29 +733,29 @@ function getCurrentVersionPriority(parsed: semver.SemVer): number {
 
 /**
  * 版本升级规则表 (修正版)
- * 
+ *
  * 基本概念：
  * - 基础号: 0.0.1 (major.minor.patch)
- * - 测试号: alpha.x 或 beta.x 
+ * - 测试号: alpha.x 或 beta.x
  * - 完整版本: 0.0.1-alpha.0
  * - 分支流向: feature → alpha → beta → main
- * 
+ *
  * 核心原则：
  * 1. Alpha分支：检查基础号是否已发布决定升级策略
- * 2. Beta分支：比较Alpha和Beta的基础号决定是否升级  
+ * 2. Beta分支：比较Alpha和Beta的基础号决定是否升级
  * 3. Main分支：仅接受Beta来源，比较基础号决定升级
- * 
+ *
  * 详细规则：
- * 
+ *
  * Alpha分支 (feature → alpha):
  * - 有标签 + 基础号已发布 → 根据label创建新基础号
  *   例: 0.1.0-alpha.0 + minor (且0.1.0已发布) → 0.2.0-alpha.0
  * - 有标签 + 基础号未发布 + 高优先级 → 升级基础号
- *   例: 0.1.0-alpha.0 + major (且0.1.0未发布) → 1.0.0-alpha.0  
+ *   例: 0.1.0-alpha.0 + major (且0.1.0未发布) → 1.0.0-alpha.0
  * - 有标签 + 基础号未发布 + 同级优先级 → 递增测试号
  *   例: 0.1.0-alpha.0 + minor (且0.1.0未发布) → 0.1.0-alpha.1
  * - 无标签 → 跳过
- * 
+ *
  * Beta分支 (alpha → beta):
  * - 有标签 → 根据label升级
  *   例: 0.1.0-alpha.1 + minor → 0.2.0-beta.0
@@ -712,11 +763,11 @@ function getCurrentVersionPriority(parsed: semver.SemVer): number {
  *   例: 0.1.0-alpha.1 vs 0.1.0-beta.0 → 跳过
  * - 无标签 + Alpha基础号更高 → 升级基础号
  *   例: 0.2.0-alpha.0 vs 0.1.0-beta.0 → 0.2.0-beta.0
- * 
+ *
  * Main分支 (beta → main):
  * - 有标签 → 根据label升级
  *   例: 0.1.0-beta.0 + patch → 0.1.1
- * - 无标签 + 基础号相同 → 跳过  
+ * - 无标签 + 基础号相同 → 跳过
  *   例: 0.1.0-beta.0 vs 0.1.0 → 跳过
  * - 无标签 + Beta基础号更高 → 升级基础号
  *   例: 0.2.0-beta.0 vs 0.1.0 → 0.2.0
@@ -781,9 +832,10 @@ async function calculateVersionUpgrade(
   baseVersion: string,
   targetBranch: SupportedBranch,
   releaseType: ReleaseType | '',
+  sourceBranch?: string,
 ): Promise<string | null> {
   // 创建升级上下文
-  const context = createUpgradeContext(baseVersion, targetBranch, releaseType);
+  const context = createUpgradeContext(baseVersion, targetBranch, releaseType, sourceBranch);
   if (!context) {
     logger.error(`无法解析基础版本: ${baseVersion}`);
     return null;
@@ -801,6 +853,7 @@ export async function calculateNewVersion(
   targetBranch: SupportedBranch,
   versionInfo: VersionInfo,
   releaseType: ReleaseType | '',
+  sourceBranch?: string,
 ): Promise<string | null> {
   try {
     // 获取上游分支的版本作为基础版本
@@ -811,9 +864,12 @@ export async function calculateNewVersion(
     }
 
     logger.info(`📌 ${targetBranch} 分支基础版本: ${baseVersion}`);
+    if (sourceBranch) {
+      logger.info(`📌 源分支: ${sourceBranch}`);
+    }
 
     // 统一的版本升级逻辑
-    const result = await calculateVersionUpgrade(baseVersion, targetBranch, releaseType);
+    const result = await calculateVersionUpgrade(baseVersion, targetBranch, releaseType, sourceBranch);
 
     if (result) {
       logger.info(`🎯 计算出新版本: ${result}`);

@@ -59,8 +59,9 @@ async function run(): Promise<void> {
     // 5. 获取基础版本（用于显示真实的当前版本）
     const baseVersion = await getBaseVersion(targetBranch, versionInfo);
 
-    // 6. 计算新版本号
-    const newVersion = await calculateNewVersion(targetBranch, versionInfo, releaseType);
+    // 6. 计算新版本号 - 包含源分支信息
+    const sourceBranch = pr?.head?.ref; // 获取源分支信息
+    const newVersion = await calculateNewVersion(targetBranch, versionInfo, releaseType, sourceBranch);
 
     // 改进日志输出，提供更多调试信息
     if (newVersion) {

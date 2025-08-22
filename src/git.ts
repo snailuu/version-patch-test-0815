@@ -600,11 +600,11 @@ export async function syncBranches(targetBranch: SupportedBranch, newVersion: st
   if (targetBranch === 'main') {
     // Main 更新后，完整的向下游同步稳定代码: Main → Beta → Alpha
     logger.info('Main分支更新，开始完整向下游同步稳定代码');
-    
+
     // 第一步：Main → Beta
     const betaResult = await syncDownstream('main', 'beta', newVersion);
     results.push(betaResult);
-    
+
     if (betaResult.success) {
       // 第二步：Beta → Alpha（级联同步）
       logger.info('Main → Beta 同步成功，继续 Beta → Alpha 级联同步');
