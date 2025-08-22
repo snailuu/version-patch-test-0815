@@ -28249,11 +28249,26 @@ async function calculateNewVersion(targetBranch, versionInfo, releaseType, sourc
     const baseVersion = await getBaseVersion(targetBranch, versionInfo);
     if (!baseVersion) {
       logger.error(`\u274C \u65E0\u6CD5\u83B7\u53D6 ${targetBranch} \u5206\u652F\u7684\u57FA\u7840\u7248\u672C`);
-      return null;
+      return { newVersion: null, actualBaseVersion: null };
     }
     logger.info(`\u{1F4CC} ${targetBranch} \u5206\u652F\u57FA\u7840\u7248\u672C: ${baseVersion}`);
     if (sourceBranch) {
       logger.info(`\u{1F4CC} \u6E90\u5206\u652F: ${sourceBranch}`);
+    }
+    let actualBaseVersion = baseVersion;
+    if (targetBranch === "beta" && sourceBranch && !sourceBranch.includes("alpha")) {
+      const currentBetaVersion = await versionManager.getLatestVersion("beta");
+      if (currentBetaVersion) {
+        actualBaseVersion = currentBetaVersion;
+        logger.info(`\u{1F527} Beta\u4FEE\u590D\u573A\u666F\uFF0C\u5B9E\u9645\u57FA\u7840\u7248\u672C: ${actualBaseVersion}`);
+      }
+    }
+    if (targetBranch === "main" && sourceBranch && !sourceBranch.includes("beta")) {
+      const currentMainVersion = await versionManager.getLatestVersion("main");
+      if (currentMainVersion) {
+        actualBaseVersion = currentMainVersion;
+        logger.info(`\u{1F527} Main\u4FEE\u590D\u573A\u666F\uFF0C\u5B9E\u9645\u57FA\u7840\u7248\u672C: ${actualBaseVersion}`);
+      }
     }
     const result = await calculateVersionUpgrade(baseVersion, targetBranch, releaseType, sourceBranch);
     if (result) {
@@ -28261,7 +28276,7 @@ async function calculateNewVersion(targetBranch, versionInfo, releaseType, sourc
     } else {
       logger.info(`\u23ED\uFE0F \u65E0\u9700\u7248\u672C\u5347\u7EA7`);
     }
-    return result;
+    return { newVersion: result, actualBaseVersion };
   } catch (error2) {
     throw new ActionError(`\u7248\u672C\u8BA1\u7B97\u5931\u8D25: ${error2}`, "calculateNewVersion", error2);
   }
@@ -29410,19 +29425,20 @@ async function run() {
     const versionInfo = await getVersionInfo(targetBranch);
     const releaseType = await determineReleaseType(pr, targetBranch);
     logger.info(`\u{1F4CB} \u7248\u672C\u5347\u7EA7\u7C7B\u578B: ${releaseType || "\u65E0"}`);
-    const baseVersion = await getBaseVersion(targetBranch, versionInfo);
     const sourceBranch = (_a2 = pr == null ? void 0 : pr.head) == null ? void 0 : _a2.ref;
-    const newVersion = await calculateNewVersion(targetBranch, versionInfo, releaseType, sourceBranch);
+    const versionResult = await calculateNewVersion(targetBranch, versionInfo, releaseType, sourceBranch);
+    const newVersion = versionResult.newVersion;
+    const actualBaseVersion = versionResult.actualBaseVersion;
     if (newVersion) {
       logger.info(`\u{1F3AF} ${isDryRun ? "\u9884\u89C8" : "\u65B0"}\u7248\u672C: ${newVersion}`);
     } else {
       logger.warning(
-        `\u26A0\uFE0F \u7248\u672C\u8BA1\u7B97\u7ED3\u679C\u4E3A\u7A7A - \u76EE\u6807\u5206\u652F: ${targetBranch}, \u53D1\u5E03\u7C7B\u578B: ${releaseType || "\u65E0"}, \u57FA\u7840\u7248\u672C: ${baseVersion || "\u65E0"}`
+        `\u26A0\uFE0F \u7248\u672C\u8BA1\u7B97\u7ED3\u679C\u4E3A\u7A7A - \u76EE\u6807\u5206\u652F: ${targetBranch}, \u53D1\u5E03\u7C7B\u578B: ${releaseType || "\u65E0"}, \u57FA\u7840\u7248\u672C: ${actualBaseVersion || "\u65E0"}`
       );
     }
     if (isDryRun) {
       logger.info("\u{1F4DD} \u6267\u884C\u9884\u89C8\u6A21\u5F0F...");
-      await handlePreviewMode(pr, targetBranch, baseVersion, newVersion, releaseType);
+      await handlePreviewMode(pr, targetBranch, actualBaseVersion, newVersion, releaseType);
       core_default.setOutput("preview-version", newVersion || "");
       core_default.setOutput("is-preview", "true");
     } else {
@@ -29433,7 +29449,7 @@ async function run() {
         logger.info(`\u2705 \u7248\u672C\u66F4\u65B0\u5B8C\u6210: ${newVersion}`);
       } else {
         logger.info(
-          `\u2139\uFE0F \u65E0\u9700\u7248\u672C\u5347\u7EA7 - \u76EE\u6807\u5206\u652F: ${targetBranch}, \u5F53\u524D\u7248\u672C: ${baseVersion || "\u65E0"}, \u53D1\u5E03\u7C7B\u578B: ${releaseType || "\u65E0"}`
+          `\u2139\uFE0F \u65E0\u9700\u7248\u672C\u5347\u7EA7 - \u76EE\u6807\u5206\u652F: ${targetBranch}, \u5F53\u524D\u7248\u672C: ${actualBaseVersion || "\u65E0"}, \u53D1\u5E03\u7C7B\u578B: ${releaseType || "\u65E0"}`
         );
         core_default.setOutput("next-version", "");
       }

@@ -861,6 +861,14 @@ async function calculateVersionUpgrade(
 }
 
 /**
+ * 版本计算结果
+ */
+export interface VersionCalculationResult {
+  newVersion: string | null;
+  actualBaseVersion: string | null; // 实际使用的基础版本（用于显示当前版本）
+}
+
+/**
  * 计算新版本号 - 统一版本升级逻辑
  */
 export async function calculateNewVersion(
@@ -868,18 +876,39 @@ export async function calculateNewVersion(
   versionInfo: VersionInfo,
   releaseType: ReleaseType | '',
   sourceBranch?: string,
-): Promise<string | null> {
+): Promise<VersionCalculationResult> {
   try {
     // 获取上游分支的版本作为基础版本
     const baseVersion = await getBaseVersion(targetBranch, versionInfo);
     if (!baseVersion) {
       logger.error(`❌ 无法获取 ${targetBranch} 分支的基础版本`);
-      return null;
+      return { newVersion: null, actualBaseVersion: null };
     }
 
     logger.info(`📌 ${targetBranch} 分支基础版本: ${baseVersion}`);
     if (sourceBranch) {
       logger.info(`📌 源分支: ${sourceBranch}`);
+    }
+
+    // 检查是否触发修复策略
+    let actualBaseVersion = baseVersion;
+    
+    // 对于beta分支的非alpha源修复
+    if (targetBranch === 'beta' && sourceBranch && !sourceBranch.includes('alpha')) {
+      const currentBetaVersion = await versionManager.getLatestVersion('beta');
+      if (currentBetaVersion) {
+        actualBaseVersion = currentBetaVersion;
+        logger.info(`🔧 Beta修复场景，实际基础版本: ${actualBaseVersion}`);
+      }
+    }
+    
+    // 对于main分支的非beta源修复
+    if (targetBranch === 'main' && sourceBranch && !sourceBranch.includes('beta')) {
+      const currentMainVersion = await versionManager.getLatestVersion('main');
+      if (currentMainVersion) {
+        actualBaseVersion = currentMainVersion;
+        logger.info(`🔧 Main修复场景，实际基础版本: ${actualBaseVersion}`);
+      }
     }
 
     // 统一的版本升级逻辑
@@ -891,7 +920,7 @@ export async function calculateNewVersion(
       logger.info(`⏭️ 无需版本升级`);
     }
 
-    return result;
+    return { newVersion: result, actualBaseVersion };
   } catch (error) {
     throw new ActionError(`版本计算失败: ${error}`, 'calculateNewVersion', error);
   }
