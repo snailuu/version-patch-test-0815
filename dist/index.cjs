@@ -28593,12 +28593,18 @@ var init_version4 = __esm({
     };
     BetaFromNonAlphaStrategy = class {
       canHandle(context3) {
-        return context3.targetBranch === "beta" && context3.currentBranchType === "beta" && context3.sourceBranch != null && !context3.sourceBranch.includes("alpha");
+        return context3.targetBranch === "beta" && context3.sourceBranch != null && !context3.sourceBranch.includes("alpha");
       }
-      execute(context3) {
-        const { baseVersion, sourceBranch } = context3;
-        logger.info(`\u{1F527} Beta\u5206\u652F\u975EAlpha\u6E90\u4FEE\u590D (\u6E90\u5206\u652F: ${sourceBranch})\uFF0C\u589E\u52A0Beta\u8BA1\u6570`);
-        return import_semver.default.inc(baseVersion, "prerelease", "beta");
+      async execute(context3) {
+        const { sourceBranch } = context3;
+        const currentBetaVersion = await versionManager.getLatestVersion("beta");
+        if (!currentBetaVersion) {
+          logger.info(`\u{1F4DD} Beta\u5206\u652F\u8FD8\u6CA1\u6709\u7248\u672C\uFF0C\u8DF3\u8FC7\u975EAlpha\u6E90\u4FEE\u590D\u7B56\u7565`);
+          return null;
+        }
+        logger.info(`\u{1F527} Beta\u5206\u652F\u975EAlpha\u6E90\u4FEE\u590D (\u6E90\u5206\u652F: ${sourceBranch})\uFF0C\u57FA\u4E8E\u5F53\u524DBeta\u7248\u672C\u589E\u52A0\u8BA1\u6570`);
+        const cleanVersion = VersionUtils.cleanVersion(currentBetaVersion);
+        return import_semver.default.inc(cleanVersion, "prerelease", "beta");
       }
       description = "Beta\u5206\u652F\u975EAlpha\u6E90\u65F6\u589E\u52A0\u8BA1\u6570\uFF08\u4FEE\u590D\u573A\u666F\uFF09";
     };
@@ -28651,12 +28657,18 @@ var init_version4 = __esm({
     };
     MainFromNonBetaStrategy = class {
       canHandle(context3) {
-        return context3.targetBranch === "main" && context3.currentBranchType === "release" && context3.sourceBranch != null && !context3.sourceBranch.includes("beta");
+        return context3.targetBranch === "main" && context3.sourceBranch != null && !context3.sourceBranch.includes("beta");
       }
-      execute(context3) {
-        const { baseVersion, sourceBranch } = context3;
-        logger.info(`\u{1F527} Main\u5206\u652F\u975EBeta\u6E90\u4FEE\u590D (\u6E90\u5206\u652F: ${sourceBranch})\uFF0C\u589E\u52A0\u8865\u4E01\u53F7`);
-        return import_semver.default.inc(baseVersion, "patch");
+      async execute(context3) {
+        const { sourceBranch } = context3;
+        const currentMainVersion = await versionManager.getLatestVersion("main");
+        if (!currentMainVersion) {
+          logger.info(`\u{1F4DD} Main\u5206\u652F\u8FD8\u6CA1\u6709\u7248\u672C\uFF0C\u8DF3\u8FC7\u975EBeta\u6E90\u4FEE\u590D\u7B56\u7565`);
+          return null;
+        }
+        logger.info(`\u{1F527} Main\u5206\u652F\u975EBeta\u6E90\u4FEE\u590D (\u6E90\u5206\u652F: ${sourceBranch})\uFF0C\u57FA\u4E8E\u5F53\u524DMain\u7248\u672C\u589E\u52A0\u8865\u4E01\u53F7`);
+        const cleanVersion = VersionUtils.cleanVersion(currentMainVersion);
+        return import_semver.default.inc(cleanVersion, "patch");
       }
       description = "Main\u5206\u652F\u975EBeta\u6E90\u65F6\u589E\u52A0\u8865\u4E01\u53F7\uFF08\u4FEE\u590D\u573A\u666F\uFF09";
     };
@@ -28664,14 +28676,14 @@ var init_version4 = __esm({
       strategies = [
         new AlphaNoLabelStrategy(),
         new AlphaWithLabelStrategy(),
-        new BetaFromAlphaStrategy(),
         new BetaFromNonAlphaStrategy(),
-        // 新增：Beta分支非Alpha源策略
+        // 新增：Beta分支非Alpha源策略（优先级高）
+        new BetaFromAlphaStrategy(),
         new BetaInternalStrategy(),
         new BetaFromReleaseStrategy(),
-        new MainFromBetaStrategy(),
         new MainFromNonBetaStrategy(),
-        // 新增：Main分支非Beta源策略
+        // 新增：Main分支非Beta源策略（优先级高）
+        new MainFromBetaStrategy(),
         new MainInternalStrategy()
       ];
       /**

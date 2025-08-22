@@ -553,17 +553,24 @@ class BetaFromNonAlphaStrategy implements VersionUpgradeStrategy {
   canHandle(context: VersionUpgradeContext): boolean {
     return (
       context.targetBranch === 'beta' &&
-      context.currentBranchType === 'beta' &&
       context.sourceBranch != null &&
       !context.sourceBranch.includes('alpha')
     );
   }
 
-  execute(context: VersionUpgradeContext): string | null {
-    const { baseVersion, sourceBranch } = context;
-
-    logger.info(`🔧 Beta分支非Alpha源修复 (源分支: ${sourceBranch})，增加Beta计数`);
-    return semver.inc(baseVersion, 'prerelease', 'beta');
+  async execute(context: VersionUpgradeContext): Promise<string | null> {
+    const { sourceBranch } = context;
+    
+    // 获取当前Beta分支的版本
+    const currentBetaVersion = await versionManager.getLatestVersion('beta');
+    if (!currentBetaVersion) {
+      logger.info(`📝 Beta分支还没有版本，跳过非Alpha源修复策略`);
+      return null;
+    }
+    
+    logger.info(`🔧 Beta分支非Alpha源修复 (源分支: ${sourceBranch})，基于当前Beta版本增加计数`);
+    const cleanVersion = VersionUtils.cleanVersion(currentBetaVersion);
+    return semver.inc(cleanVersion, 'prerelease', 'beta');
   }
 
   description = 'Beta分支非Alpha源时增加计数（修复场景）';
@@ -649,17 +656,24 @@ class MainFromNonBetaStrategy implements VersionUpgradeStrategy {
   canHandle(context: VersionUpgradeContext): boolean {
     return (
       context.targetBranch === 'main' &&
-      context.currentBranchType === 'release' &&
       context.sourceBranch != null &&
       !context.sourceBranch.includes('beta')
     );
   }
 
-  execute(context: VersionUpgradeContext): string | null {
-    const { baseVersion, sourceBranch } = context;
-
-    logger.info(`🔧 Main分支非Beta源修复 (源分支: ${sourceBranch})，增加补丁号`);
-    return semver.inc(baseVersion, 'patch');
+  async execute(context: VersionUpgradeContext): Promise<string | null> {
+    const { sourceBranch } = context;
+    
+    // 获取当前Main分支的版本
+    const currentMainVersion = await versionManager.getLatestVersion('main');
+    if (!currentMainVersion) {
+      logger.info(`📝 Main分支还没有版本，跳过非Beta源修复策略`);
+      return null;
+    }
+    
+    logger.info(`🔧 Main分支非Beta源修复 (源分支: ${sourceBranch})，基于当前Main版本增加补丁号`);
+    const cleanVersion = VersionUtils.cleanVersion(currentMainVersion);
+    return semver.inc(cleanVersion, 'patch');
   }
 
   description = 'Main分支非Beta源时增加补丁号（修复场景）';
@@ -672,12 +686,12 @@ class VersionUpgradeManager {
   private strategies: VersionUpgradeStrategy[] = [
     new AlphaNoLabelStrategy(),
     new AlphaWithLabelStrategy(),
+    new BetaFromNonAlphaStrategy(), // 新增：Beta分支非Alpha源策略（优先级高）
     new BetaFromAlphaStrategy(),
-    new BetaFromNonAlphaStrategy(), // 新增：Beta分支非Alpha源策略
     new BetaInternalStrategy(),
     new BetaFromReleaseStrategy(),
+    new MainFromNonBetaStrategy(), // 新增：Main分支非Beta源策略（优先级高）
     new MainFromBetaStrategy(),
-    new MainFromNonBetaStrategy(), // 新增：Main分支非Beta源策略
     new MainInternalStrategy(),
   ];
 
