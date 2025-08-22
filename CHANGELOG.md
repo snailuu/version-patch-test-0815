@@ -1,3 +1,33 @@
+## [v0.4.0-alpha.2] - 2025-08-22
+
+### ✨ Features
+- fix: 修改版本逻辑 ([#36](https://github.com/snailuu/version-patch-test-0815/pull/36))
+
+
+## [v0.4.0-alpha.1] - 2025-08-21
+
+### 🐛 Bug Fixes
+- fix:new commit ([#34](https://github.com/snailuu/version-patch-test-0815/pull/34))
+
+
+## [v0.4.0-alpha.0] - 2025-08-21
+
+### ✨ Features
+- feat: new alpha feat ([#33](https://github.com/snailuu/version-patch-test-0815/pull/33))
+
+
+## [v0.3.4-alpha.1] - 2025-08-20
+
+### 🐛 Bug Fixes
+- feat: new alpha feat ([#32](https://github.com/snailuu/version-patch-test-0815/pull/32))
+
+
+## [v0.3.4-alpha.0] - 2025-08-20
+
+### 🐛 Bug Fixes
+- feat: new alpha feat ([#31](https://github.com/snailuu/version-patch-test-0815/pull/31))
+
+
 ## [v0.3.2] - 2025-08-20
 
 ### 📝 Changes
@@ -57,6 +87,11 @@
 ### Bug Fixes
 
 * 修改构建流程 ([115042f](https://github.com/snailuu/version-patch-test-0815/commit/115042fd7c4c305694ee7d61f6c209235836ae8c))
+
+
+
+
+
 
 
 
