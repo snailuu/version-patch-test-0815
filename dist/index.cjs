@@ -28169,7 +28169,7 @@ async function getVersionInfo(targetBranch) {
 async function getLatestGlobalVersion() {
   return await versionManager.getGlobalHighestVersion();
 }
-function createUpgradeContext(baseVersion, targetBranch, releaseType) {
+function createUpgradeContext(baseVersion, targetBranch, releaseType, sourceBranch) {
   const parsed = VersionUtils.parseVersion(baseVersion);
   if (!parsed) return null;
   const isPrerelease = parsed.prerelease && parsed.prerelease.length > 0;
@@ -28186,7 +28186,8 @@ function createUpgradeContext(baseVersion, targetBranch, releaseType) {
     parsed,
     hasLabel,
     labelPriority,
-    currentPriority
+    currentPriority,
+    sourceBranch
   };
 }
 function getReleaseLevel(release) {
@@ -28234,8 +28235,8 @@ async function getBaseVersion(targetBranch, versionInfo) {
       return null;
   }
 }
-async function calculateVersionUpgrade(baseVersion, targetBranch, releaseType) {
-  const context3 = createUpgradeContext(baseVersion, targetBranch, releaseType);
+async function calculateVersionUpgrade(baseVersion, targetBranch, releaseType, sourceBranch) {
+  const context3 = createUpgradeContext(baseVersion, targetBranch, releaseType, sourceBranch);
   if (!context3) {
     logger.error(`\u65E0\u6CD5\u89E3\u6790\u57FA\u7840\u7248\u672C: ${baseVersion}`);
     return null;
@@ -28243,21 +28244,39 @@ async function calculateVersionUpgrade(baseVersion, targetBranch, releaseType) {
   const newVersion = await upgradeManager.upgrade(context3);
   return newVersion ? VersionUtils.addVersionPrefix(newVersion) : null;
 }
-async function calculateNewVersion(targetBranch, versionInfo, releaseType) {
+async function calculateNewVersion(targetBranch, versionInfo, releaseType, sourceBranch) {
   try {
     const baseVersion = await getBaseVersion(targetBranch, versionInfo);
     if (!baseVersion) {
       logger.error(`\u274C \u65E0\u6CD5\u83B7\u53D6 ${targetBranch} \u5206\u652F\u7684\u57FA\u7840\u7248\u672C`);
-      return null;
+      return { newVersion: null, actualBaseVersion: null };
     }
     logger.info(`\u{1F4CC} ${targetBranch} \u5206\u652F\u57FA\u7840\u7248\u672C: ${baseVersion}`);
-    const result = await calculateVersionUpgrade(baseVersion, targetBranch, releaseType);
+    if (sourceBranch) {
+      logger.info(`\u{1F4CC} \u6E90\u5206\u652F: ${sourceBranch}`);
+    }
+    let actualBaseVersion = baseVersion;
+    if (targetBranch === "beta" && sourceBranch && !sourceBranch.includes("alpha")) {
+      const currentBetaVersion = await versionManager.getLatestVersion("beta");
+      if (currentBetaVersion) {
+        actualBaseVersion = currentBetaVersion;
+        logger.info(`\u{1F527} Beta\u4FEE\u590D\u573A\u666F\uFF0C\u5B9E\u9645\u57FA\u7840\u7248\u672C: ${actualBaseVersion}`);
+      }
+    }
+    if (targetBranch === "main" && sourceBranch && !sourceBranch.includes("beta")) {
+      const currentMainVersion = await versionManager.getLatestVersion("main");
+      if (currentMainVersion) {
+        actualBaseVersion = currentMainVersion;
+        logger.info(`\u{1F527} Main\u4FEE\u590D\u573A\u666F\uFF0C\u5B9E\u9645\u57FA\u7840\u7248\u672C: ${actualBaseVersion}`);
+      }
+    }
+    const result = await calculateVersionUpgrade(baseVersion, targetBranch, releaseType, sourceBranch);
     if (result) {
       logger.info(`\u{1F3AF} \u8BA1\u7B97\u51FA\u65B0\u7248\u672C: ${result}`);
     } else {
       logger.info(`\u23ED\uFE0F \u65E0\u9700\u7248\u672C\u5347\u7EA7`);
     }
-    return result;
+    return { newVersion: result, actualBaseVersion };
   } catch (error2) {
     throw new ActionError(`\u7248\u672C\u8BA1\u7B97\u5931\u8D25: ${error2}`, "calculateNewVersion", error2);
   }
@@ -28274,7 +28293,7 @@ async function updatePackageVersion(version) {
     throw new ActionError(`\u66F4\u65B0\u7248\u672C\u6587\u4EF6\u5931\u8D25: ${error2}`, "updatePackageVersion", error2);
   }
 }
-var import_exec, import_semver, VersionUtils, VersionManager, versionManager, AlphaNoLabelStrategy, AlphaWithLabelStrategy, BetaFromAlphaStrategy, BetaInternalStrategy, BetaFromReleaseStrategy, MainFromBetaStrategy, MainInternalStrategy, VersionUpgradeManager, upgradeManager;
+var import_exec, import_semver, VersionUtils, VersionManager, versionManager, AlphaNoLabelStrategy, AlphaWithLabelStrategy, BetaFromAlphaStrategy, BetaInternalStrategy, BetaFromReleaseStrategy, BetaFromNonAlphaStrategy, MainFromBetaStrategy, MainInternalStrategy, MainFromNonBetaStrategy, VersionUpgradeManager, upgradeManager;
 var init_version4 = __esm({
   "src/version.ts"() {
     "use strict";
@@ -28587,6 +28606,23 @@ var init_version4 = __esm({
       }
       description = "\u6B63\u5F0F\u7248\u672C\u521B\u5EFABeta\u7248\u672C";
     };
+    BetaFromNonAlphaStrategy = class {
+      canHandle(context3) {
+        return context3.targetBranch === "beta" && context3.sourceBranch != null && !context3.sourceBranch.includes("alpha");
+      }
+      async execute(context3) {
+        const { sourceBranch } = context3;
+        const currentBetaVersion = await versionManager.getLatestVersion("beta");
+        if (!currentBetaVersion) {
+          logger.info(`\u{1F4DD} Beta\u5206\u652F\u8FD8\u6CA1\u6709\u7248\u672C\uFF0C\u8DF3\u8FC7\u975EAlpha\u6E90\u4FEE\u590D\u7B56\u7565`);
+          return null;
+        }
+        logger.info(`\u{1F527} Beta\u5206\u652F\u975EAlpha\u6E90\u4FEE\u590D (\u6E90\u5206\u652F: ${sourceBranch})\uFF0C\u57FA\u4E8E\u5F53\u524DBeta\u7248\u672C\u589E\u52A0\u8BA1\u6570`);
+        const cleanVersion = VersionUtils.cleanVersion(currentBetaVersion);
+        return import_semver.default.inc(cleanVersion, "prerelease", "beta");
+      }
+      description = "Beta\u5206\u652F\u975EAlpha\u6E90\u65F6\u589E\u52A0\u8BA1\u6570\uFF08\u4FEE\u590D\u573A\u666F\uFF09";
+    };
     MainFromBetaStrategy = class {
       canHandle(context3) {
         return context3.targetBranch === "main" && context3.currentBranchType === "beta";
@@ -28634,13 +28670,34 @@ var init_version4 = __esm({
       }
       description = "\u6B63\u5F0F\u7248\u672C\u5185\u90E8\u5347\u7EA7";
     };
+    MainFromNonBetaStrategy = class {
+      canHandle(context3) {
+        return context3.targetBranch === "main" && context3.sourceBranch != null && !context3.sourceBranch.includes("beta");
+      }
+      async execute(context3) {
+        const { sourceBranch } = context3;
+        const currentMainVersion = await versionManager.getLatestVersion("main");
+        if (!currentMainVersion) {
+          logger.info(`\u{1F4DD} Main\u5206\u652F\u8FD8\u6CA1\u6709\u7248\u672C\uFF0C\u8DF3\u8FC7\u975EBeta\u6E90\u4FEE\u590D\u7B56\u7565`);
+          return null;
+        }
+        logger.info(`\u{1F527} Main\u5206\u652F\u975EBeta\u6E90\u4FEE\u590D (\u6E90\u5206\u652F: ${sourceBranch})\uFF0C\u57FA\u4E8E\u5F53\u524DMain\u7248\u672C\u589E\u52A0\u8865\u4E01\u53F7`);
+        const cleanVersion = VersionUtils.cleanVersion(currentMainVersion);
+        return import_semver.default.inc(cleanVersion, "patch");
+      }
+      description = "Main\u5206\u652F\u975EBeta\u6E90\u65F6\u589E\u52A0\u8865\u4E01\u53F7\uFF08\u4FEE\u590D\u573A\u666F\uFF09";
+    };
     VersionUpgradeManager = class {
       strategies = [
         new AlphaNoLabelStrategy(),
         new AlphaWithLabelStrategy(),
+        new BetaFromNonAlphaStrategy(),
+        // 新增：Beta分支非Alpha源策略（优先级高）
         new BetaFromAlphaStrategy(),
         new BetaInternalStrategy(),
         new BetaFromReleaseStrategy(),
+        new MainFromNonBetaStrategy(),
+        // 新增：Main分支非Beta源策略（优先级高）
         new MainFromBetaStrategy(),
         new MainInternalStrategy()
       ];
@@ -29354,6 +29411,7 @@ async function handleExecutionMode(newVersion, targetBranch, pr, releaseType) {
   }
 }
 async function run() {
+  var _a2;
   try {
     const eventInfo = await getEventInfo();
     if (!eventInfo) return;
@@ -29367,18 +29425,20 @@ async function run() {
     const versionInfo = await getVersionInfo(targetBranch);
     const releaseType = await determineReleaseType(pr, targetBranch);
     logger.info(`\u{1F4CB} \u7248\u672C\u5347\u7EA7\u7C7B\u578B: ${releaseType || "\u65E0"}`);
-    const baseVersion = await getBaseVersion(targetBranch, versionInfo);
-    const newVersion = await calculateNewVersion(targetBranch, versionInfo, releaseType);
+    const sourceBranch = (_a2 = pr == null ? void 0 : pr.head) == null ? void 0 : _a2.ref;
+    const versionResult = await calculateNewVersion(targetBranch, versionInfo, releaseType, sourceBranch);
+    const newVersion = versionResult.newVersion;
+    const actualBaseVersion = versionResult.actualBaseVersion;
     if (newVersion) {
       logger.info(`\u{1F3AF} ${isDryRun ? "\u9884\u89C8" : "\u65B0"}\u7248\u672C: ${newVersion}`);
     } else {
       logger.warning(
-        `\u26A0\uFE0F \u7248\u672C\u8BA1\u7B97\u7ED3\u679C\u4E3A\u7A7A - \u76EE\u6807\u5206\u652F: ${targetBranch}, \u53D1\u5E03\u7C7B\u578B: ${releaseType || "\u65E0"}, \u57FA\u7840\u7248\u672C: ${baseVersion || "\u65E0"}`
+        `\u26A0\uFE0F \u7248\u672C\u8BA1\u7B97\u7ED3\u679C\u4E3A\u7A7A - \u76EE\u6807\u5206\u652F: ${targetBranch}, \u53D1\u5E03\u7C7B\u578B: ${releaseType || "\u65E0"}, \u57FA\u7840\u7248\u672C: ${actualBaseVersion || "\u65E0"}`
       );
     }
     if (isDryRun) {
       logger.info("\u{1F4DD} \u6267\u884C\u9884\u89C8\u6A21\u5F0F...");
-      await handlePreviewMode(pr, targetBranch, baseVersion, newVersion, releaseType);
+      await handlePreviewMode(pr, targetBranch, actualBaseVersion, newVersion, releaseType);
       core_default.setOutput("preview-version", newVersion || "");
       core_default.setOutput("is-preview", "true");
     } else {
@@ -29389,7 +29449,7 @@ async function run() {
         logger.info(`\u2705 \u7248\u672C\u66F4\u65B0\u5B8C\u6210: ${newVersion}`);
       } else {
         logger.info(
-          `\u2139\uFE0F \u65E0\u9700\u7248\u672C\u5347\u7EA7 - \u76EE\u6807\u5206\u652F: ${targetBranch}, \u5F53\u524D\u7248\u672C: ${baseVersion || "\u65E0"}, \u53D1\u5E03\u7C7B\u578B: ${releaseType || "\u65E0"}`
+          `\u2139\uFE0F \u65E0\u9700\u7248\u672C\u5347\u7EA7 - \u76EE\u6807\u5206\u652F: ${targetBranch}, \u5F53\u524D\u7248\u672C: ${actualBaseVersion || "\u65E0"}, \u53D1\u5E03\u7C7B\u578B: ${releaseType || "\u65E0"}`
         );
         core_default.setOutput("next-version", "");
       }
