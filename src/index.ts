@@ -3,7 +3,7 @@ import core, { logger } from './core';
 import { configureGitUser, syncBranches, updateVersionAndCreateTag } from './git';
 import { determineReleaseType, getEventInfo, handlePreviewMode } from './pr';
 import { ActionError, isSupportedBranch, type PRData, type SupportedBranch } from './types';
-import { calculateNewVersion, getBaseVersion, getVersionInfo } from './version';
+import { calculateNewVersion, getBaseVersion, getVersionInfo, type VersionCalculationResult } from './version';
 
 // ==================== 主执行函数 ====================
 
@@ -56,18 +56,19 @@ async function run(): Promise<void> {
     const releaseType = await determineReleaseType(pr, targetBranch);
     logger.info(`📋 版本升级类型: ${releaseType || '无'}`);
 
-    // 5. 获取基础版本（用于显示真实的当前版本）
-    const baseVersion = await getBaseVersion(targetBranch, versionInfo);
-
-    // 6. 计算新版本号
-    const newVersion = await calculateNewVersion(targetBranch, versionInfo, releaseType);
+    // 5. 计算新版本号 - 包含源分支信息
+    const sourceBranch = pr?.head?.ref; // 获取源分支信息
+    const versionResult = await calculateNewVersion(targetBranch, versionInfo, releaseType, sourceBranch);
+    
+    const newVersion = versionResult.newVersion;
+    const actualBaseVersion = versionResult.actualBaseVersion; // 用于comment显示的实际当前版本
 
     // 改进日志输出，提供更多调试信息
     if (newVersion) {
       logger.info(`🎯 ${isDryRun ? '预览' : '新'}版本: ${newVersion}`);
     } else {
       logger.warning(
-        `⚠️ 版本计算结果为空 - 目标分支: ${targetBranch}, 发布类型: ${releaseType || '无'}, 基础版本: ${baseVersion || '无'}`,
+        `⚠️ 版本计算结果为空 - 目标分支: ${targetBranch}, 发布类型: ${releaseType || '无'}, 基础版本: ${actualBaseVersion || '无'}`,
       );
     }
 
@@ -75,7 +76,7 @@ async function run(): Promise<void> {
     if (isDryRun) {
       // 预览模式：更新 PR 评论
       logger.info('📝 执行预览模式...');
-      await handlePreviewMode(pr, targetBranch, baseVersion, newVersion, releaseType);
+      await handlePreviewMode(pr, targetBranch, actualBaseVersion, newVersion, releaseType);
       core.setOutput('preview-version', newVersion || '');
       core.setOutput('is-preview', 'true');
     } else {
@@ -90,7 +91,7 @@ async function run(): Promise<void> {
       } else {
         // 无新版本：记录详细信息但不阻塞流程
         logger.info(
-          `ℹ️ 无需版本升级 - 目标分支: ${targetBranch}, 当前版本: ${baseVersion || '无'}, 发布类型: ${releaseType || '无'}`,
+          `ℹ️ 无需版本升级 - 目标分支: ${targetBranch}, 当前版本: ${actualBaseVersion || '无'}, 发布类型: ${releaseType || '无'}`,
         );
         core.setOutput('next-version', '');
       }
