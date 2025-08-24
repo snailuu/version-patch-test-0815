@@ -50,14 +50,24 @@ async function run(): Promise<void> {
     // 🔍 调试信息：输出完整的分支信息和运行实例标识
     const runId = process.env.GITHUB_RUN_ID;
     const runNumber = process.env.GITHUB_RUN_NUMBER;
-    logger.info(`🔍 调试分支信息:`);
+    logger.info(`🔍 ===== Action运行实例信息 =====`);
     logger.info(`  - Action运行ID: ${runId}`);
     logger.info(`  - Action运行编号: ${runNumber}`);
+    logger.info(`  - 工作流名称: ${process.env.GITHUB_WORKFLOW}`);
     logger.info(`  - 事件类型: ${context.eventName}`);
+    logger.info(`  - 事件动作: ${context.payload.action}`);
+    logger.info(`🔍 ===== PR信息 =====`);
+    logger.info(`  - payload.pull_request.number: ${context.payload.pull_request?.number}`);
+    logger.info(`  - prPayload.number: ${prPayload.number}`);
+    logger.info(`  - prNumber: ${prNumber}`);
     logger.info(`  - 源分支 (head.ref): ${sourceBranch}`);
     logger.info(`  - 目标分支 (base.ref): ${targetBranch}`);
-    logger.info(`  - PR号码: ${prNumber}`);
+    logger.info(`  - PR标题: ${prPayload.title || '无'}`);
     logger.info(`  - PR URL: ${prPayload.html_url || '无'}`);
+    logger.info(`🔍 ===== Context完整信息 =====`);
+    logger.info(`  - context.sha: ${context.sha}`);
+    logger.info(`  - context.ref: ${context.ref}`);
+    logger.info(`  - context.payload keys: ${Object.keys(context.payload).join(', ')}`);
     
     // 构建PR数据对象（使用payload数据，避免API重新获取导致的不一致）
     const pr: PRData = prPayload as PRData;
