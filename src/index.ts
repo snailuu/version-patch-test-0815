@@ -1,7 +1,7 @@
 import { context } from '@actions/github';
 import core, { logger } from './core';
 import { configureGitUser, syncBranches, updateVersionAndCreateTag } from './git';
-import { getCurrentPR, handlePreviewMode } from './pr';
+import { handlePreviewMode } from './pr';
 import { ActionError, isSupportedBranch, type PRData, type SupportedBranch } from './types';
 import { calculateNewVersion, getBaseVersion } from './version';
 
@@ -42,10 +42,20 @@ async function run(): Promise<void> {
       return;
     }
 
-    // 获取源分支和目标分支信息
+    // 获取源分支和目标分支信息（直接使用payload数据，保证一致性）
     const targetBranch = prPayload.base.ref;
     const sourceBranch = prPayload.head.ref;
-    const pr = await getCurrentPR();
+    const prNumber = prPayload.number;
+    
+    // 🔍 调试信息：输出完整的分支信息
+    logger.info(`🔍 调试分支信息:`);
+    logger.info(`  - 源分支 (head.ref): ${sourceBranch}`);
+    logger.info(`  - 目标分支 (base.ref): ${targetBranch}`);
+    logger.info(`  - PR号码: ${prNumber}`);
+    logger.info(`  - PR URL: ${prPayload.html_url || '无'}`);
+    
+    // 构建PR数据对象（使用payload数据，避免API重新获取导致的不一致）
+    const pr: PRData = prPayload as PRData;
     const isMerged = prPayload.state === 'closed' && prPayload.merged === true;
     const isDryRun = !isMerged;
     const eventType = isMerged ? 'merge' : 'preview';

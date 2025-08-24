@@ -15,10 +15,10 @@ const octokit = getOctokit(core.getInput('token', { required: true }));
  */
 export class PRUtils {
   /**
-   * 获取当前 PR 号
+   * 获取当前 PR 号（优先使用payload数据）
    */
   static getCurrentPRNumber(pr: PRData | null): number | null {
-    return pr?.number || context.payload.pull_request?.number || null;
+    return context.payload.pull_request?.number || pr?.number || null;
   }
 
   /**
