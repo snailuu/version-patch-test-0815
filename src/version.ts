@@ -523,56 +523,34 @@ class BetaStrategy implements VersionUpgradeStrategy {
     // 🚫 业务规则检查：基于最新tag状态验证Beta分支操作
     await validateBranchVersionState('beta');
 
-    // 判断源分支类型
-    const isFromAlpha = sourceBranch.includes('alpha') || context.currentBranchType === 'alpha';
-
-    if (isFromAlpha) {
-      return await this.handleFromAlpha(context);
-    } else {
-      return await this.handleFromNonAlpha(context);
-    }
-  }
-
-  private async handleFromAlpha(context: VersionUpgradeContext): Promise<string> {
-    const { baseVersion } = context;
-    const alphaBaseVersion = VersionUtils.getBaseVersionString(baseVersion);
-
-    // 从Alpha转换到Beta：基于Alpha版本的基础号，重置测试号为0
-    const betaVersion = `${alphaBaseVersion}-beta.0`;
-    logger.info(`🔄 从Alpha分支转换为Beta: ${baseVersion} -> ${betaVersion}`);
-    return betaVersion;
-  }
-
-  private async handleFromNonAlpha(context: VersionUpgradeContext): Promise<string> {
-    const { sourceBranch } = context;
-
-    // 检查当前是否有未发布的Beta版本（测试号）
+    // 检查当前是否有Beta版本
     const currentBetaVersion = await versionManager.getLatestVersion('beta');
 
     if (!currentBetaVersion) {
-      // 没有Beta版本，说明是新功能，应该合并到Alpha分支
-      const errorMsg = `没有未发布的Beta测试号，来自非Alpha分支 (${sourceBranch}) 的新功能应该合并到Alpha分支`;
-      logger.error(`❌ ${errorMsg}`);
-      throw new ActionError(errorMsg, 'BetaFromNonAlphaStrategy');
+      // 没有Beta版本，必须是从Alpha转换而来
+      const isFromAlpha = sourceBranch.includes('alpha') || context.currentBranchType === 'alpha';
+      if (!isFromAlpha) {
+        const errorMsg = `没有Beta版本时，只能从Alpha分支转换到Beta，当前源分支: ${sourceBranch}`;
+        logger.error(`❌ ${errorMsg}`);
+        throw new ActionError(errorMsg, 'BetaStrategy');
+      }
+      
+      // 从Alpha创建第一个Beta版本
+      const { baseVersion } = context;
+      const alphaBaseVersion = VersionUtils.getBaseVersionString(baseVersion);
+      const betaVersion = `${alphaBaseVersion}-beta.0`;
+      logger.info(`🆕 从Alpha创建首个Beta版本: ${baseVersion} -> ${betaVersion}`);
+      return betaVersion;
     }
 
-    // 检查Beta版本是否有测试号（prerelease标识）
-    const parsed = VersionUtils.parseVersion(currentBetaVersion);
-    if (!parsed || !parsed.prerelease || parsed.prerelease.length === 0) {
-      // 没有测试号，说明是已发布的Beta版本，不应该合并
-      const errorMsg = `没有未发布的Beta测试号，来自非Alpha分支 (${sourceBranch}) 的新功能应该合并到Alpha分支`;
-      logger.error(`❌ ${errorMsg}`);
-      throw new ActionError(errorMsg, 'BetaFromNonAlphaStrategy');
-    }
-
-    // 有未发布的Beta测试号，说明是Bug修复分支，可以合并
-    // 合并后只增加测试号计数，基础号保持一致
+    // 已有Beta版本：无论源分支是什么，都递增现有Beta的测试号
     const incrementedVersion = semver.inc(currentBetaVersion, 'prerelease', 'beta');
     logger.info(
-      `🐛 检测到来自非Alpha分支 (${sourceBranch}) 的Bug修复，递增测试号: ${currentBetaVersion} -> ${incrementedVersion}`,
+      `🔄 递增Beta测试号: ${currentBetaVersion} -> ${incrementedVersion} (源分支: ${sourceBranch})`,
     );
     return incrementedVersion || currentBetaVersion;
   }
+
 
   description = 'Beta分支基于源分支类型处理版本升级';
 }
