@@ -28349,18 +28349,19 @@ async function getBaseVersion(targetBranch, pr = null) {
   switch (targetBranch) {
     case "alpha": {
       const currentAlphaVersion = await versionManager.getLatestVersion("alpha");
-      const globalHighestVersion = await versionManager.getGlobalHighestVersion();
+      const mainVersion = await versionManager.getLatestVersion("main");
       if (!currentAlphaVersion) {
-        logger.info(`\u{1F4CC} Alpha\u5206\u652F\u57FA\u7840\u7248\u672C: ${globalHighestVersion} (\u65E0Alpha\u7248\u672C\uFF0C\u57FA\u4E8E\u5168\u5C40\u6700\u9AD8\u7248\u672C)`);
-        return globalHighestVersion;
+        const baseVersion = mainVersion || VersionUtils.createDefaultVersion("base");
+        logger.info(`\u{1F4CC} Alpha\u5206\u652F\u57FA\u7840\u7248\u672C: ${baseVersion} (\u65E0Alpha\u7248\u672C\uFF0C\u57FA\u4E8EMain\u7248\u672C)`);
+        return baseVersion;
       }
       const alphaBaseVersion = VersionUtils.getBaseVersionString(currentAlphaVersion);
-      const globalBaseVersion = VersionUtils.getBaseVersionString(globalHighestVersion);
-      if (import_semver.default.gte(globalBaseVersion, alphaBaseVersion)) {
-        logger.info(`\u{1F4CC} Alpha\u5206\u652F\u57FA\u7840\u7248\u672C: ${globalHighestVersion} (\u5168\u5C40\u7248\u672C ${globalBaseVersion} >= Alpha\u57FA\u7840\u7248\u672C ${alphaBaseVersion})`);
-        return globalHighestVersion;
+      const mainBaseVersion = mainVersion ? VersionUtils.getBaseVersionString(mainVersion) : "0.0.0";
+      if (import_semver.default.gt(mainBaseVersion, alphaBaseVersion)) {
+        logger.info(`\u{1F4CC} Alpha\u5206\u652F\u57FA\u7840\u7248\u672C: ${mainVersion} (Main\u7248\u672C ${mainBaseVersion} > Alpha\u57FA\u7840\u7248\u672C ${alphaBaseVersion})`);
+        return mainVersion;
       } else {
-        logger.info(`\u{1F4CC} Alpha\u5206\u652F\u57FA\u7840\u7248\u672C: ${currentAlphaVersion} (Alpha\u57FA\u7840\u7248\u672C ${alphaBaseVersion} > \u5168\u5C40\u7248\u672C ${globalBaseVersion})`);
+        logger.info(`\u{1F4CC} Alpha\u5206\u652F\u57FA\u7840\u7248\u672C: ${currentAlphaVersion} (Alpha\u57FA\u7840\u7248\u672C ${alphaBaseVersion} >= Main\u7248\u672C ${mainBaseVersion})`);
         return currentAlphaVersion;
       }
     }

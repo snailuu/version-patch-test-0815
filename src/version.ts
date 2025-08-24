@@ -656,25 +656,26 @@ export async function getBaseVersion(targetBranch: SupportedBranch, pr: PRData |
   switch (targetBranch) {
     case 'alpha': {
       const currentAlphaVersion = await versionManager.getLatestVersion('alpha'); // 获取当前Alpha版本
-      const globalHighestVersion = await versionManager.getGlobalHighestVersion(); // 获取全局最高版本
+      const mainVersion = await versionManager.getLatestVersion('main'); // 获取Main分支版本
       
       if (!currentAlphaVersion) {
-        // 没有Alpha版本，基于全局最高版本开始
-        logger.info(`📌 Alpha分支基础版本: ${globalHighestVersion} (无Alpha版本，基于全局最高版本)`);
-        return globalHighestVersion;
+        // 没有Alpha版本，基于Main分支版本开始
+        const baseVersion = mainVersion || VersionUtils.createDefaultVersion('base');
+        logger.info(`📌 Alpha分支基础版本: ${baseVersion} (无Alpha版本，基于Main版本)`);
+        return baseVersion;
       }
       
-      // 比较Alpha基础号和全局最高版本
+      // 比较Alpha基础号和Main版本
       const alphaBaseVersion = VersionUtils.getBaseVersionString(currentAlphaVersion);
-      const globalBaseVersion = VersionUtils.getBaseVersionString(globalHighestVersion);
+      const mainBaseVersion = mainVersion ? VersionUtils.getBaseVersionString(mainVersion) : '0.0.0';
       
-      if (semver.gt(globalBaseVersion, alphaBaseVersion)) {
-        // 全局版本大于Alpha基础版本，应该基于全局最高版本开始新的alpha开发
-        logger.info(`📌 Alpha分支基础版本: ${globalHighestVersion} (全局版本 ${globalBaseVersion} >= Alpha基础版本 ${alphaBaseVersion})`);
-        return globalHighestVersion;
+      if (semver.gt(mainBaseVersion, alphaBaseVersion)) {
+        // Main版本大于Alpha基础版本，应该基于Main版本开始新的alpha开发
+        logger.info(`📌 Alpha分支基础版本: ${mainVersion} (Main版本 ${mainBaseVersion} > Alpha基础版本 ${alphaBaseVersion})`);
+        return mainVersion;
       } else {
-        // Alpha版本基础号更高，继续基于当前Alpha版本
-        logger.info(`📌 Alpha分支基础版本: ${currentAlphaVersion} (Alpha基础版本 ${alphaBaseVersion} > 全局版本 ${globalBaseVersion})`);
+        // Alpha版本基础号不低于Main版本，继续基于当前Alpha版本
+        logger.info(`📌 Alpha分支基础版本: ${currentAlphaVersion} (Alpha基础版本 ${alphaBaseVersion} >= Main版本 ${mainBaseVersion})`);
         return currentAlphaVersion;
       }
     }
