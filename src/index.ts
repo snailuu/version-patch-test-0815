@@ -47,8 +47,13 @@ async function run(): Promise<void> {
     const sourceBranch = prPayload.head.ref;
     const prNumber = prPayload.number;
     
-    // 🔍 调试信息：输出完整的分支信息
+    // 🔍 调试信息：输出完整的分支信息和运行实例标识
+    const runId = process.env.GITHUB_RUN_ID;
+    const runNumber = process.env.GITHUB_RUN_NUMBER;
     logger.info(`🔍 调试分支信息:`);
+    logger.info(`  - Action运行ID: ${runId}`);
+    logger.info(`  - Action运行编号: ${runNumber}`);
+    logger.info(`  - 事件类型: ${context.eventName}`);
     logger.info(`  - 源分支 (head.ref): ${sourceBranch}`);
     logger.info(`  - 目标分支 (base.ref): ${targetBranch}`);
     logger.info(`  - PR号码: ${prNumber}`);
