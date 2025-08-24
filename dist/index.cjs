@@ -28349,18 +28349,19 @@ async function getBaseVersion(targetBranch, pr = null) {
   switch (targetBranch) {
     case "alpha": {
       const currentAlphaVersion = await versionManager.getLatestVersion("alpha");
-      const globalHighestVersion = await versionManager.getGlobalHighestVersion();
+      const mainVersion = await versionManager.getLatestVersion("main");
       if (!currentAlphaVersion) {
-        logger.info(`\u{1F4CC} Alpha\u5206\u652F\u57FA\u7840\u7248\u672C: ${globalHighestVersion} (\u65E0Alpha\u7248\u672C\uFF0C\u57FA\u4E8E\u5168\u5C40\u6700\u9AD8\u7248\u672C)`);
-        return globalHighestVersion;
+        const baseVersion = mainVersion || VersionUtils.createDefaultVersion("base");
+        logger.info(`\u{1F4CC} Alpha\u5206\u652F\u57FA\u7840\u7248\u672C: ${baseVersion} (\u65E0Alpha\u7248\u672C\uFF0C\u57FA\u4E8EMain\u7248\u672C)`);
+        return baseVersion;
       }
       const alphaBaseVersion = VersionUtils.getBaseVersionString(currentAlphaVersion);
-      const globalBaseVersion = VersionUtils.getBaseVersionString(globalHighestVersion);
-      if (import_semver.default.gte(globalBaseVersion, alphaBaseVersion)) {
-        logger.info(`\u{1F4CC} Alpha\u5206\u652F\u57FA\u7840\u7248\u672C: ${globalHighestVersion} (\u5168\u5C40\u7248\u672C ${globalBaseVersion} >= Alpha\u57FA\u7840\u7248\u672C ${alphaBaseVersion})`);
-        return globalHighestVersion;
+      const mainBaseVersion = mainVersion ? VersionUtils.getBaseVersionString(mainVersion) : "0.0.0";
+      if (import_semver.default.gt(mainBaseVersion, alphaBaseVersion)) {
+        logger.info(`\u{1F4CC} Alpha\u5206\u652F\u57FA\u7840\u7248\u672C: ${mainVersion} (Main\u7248\u672C ${mainBaseVersion} > Alpha\u57FA\u7840\u7248\u672C ${alphaBaseVersion})`);
+        return mainVersion;
       } else {
-        logger.info(`\u{1F4CC} Alpha\u5206\u652F\u57FA\u7840\u7248\u672C: ${currentAlphaVersion} (Alpha\u57FA\u7840\u7248\u672C ${alphaBaseVersion} > \u5168\u5C40\u7248\u672C ${globalBaseVersion})`);
+        logger.info(`\u{1F4CC} Alpha\u5206\u652F\u57FA\u7840\u7248\u672C: ${currentAlphaVersion} (Alpha\u57FA\u7840\u7248\u672C ${alphaBaseVersion} >= Main\u7248\u672C ${mainBaseVersion})`);
         return currentAlphaVersion;
       }
     }
@@ -28688,29 +28689,29 @@ var init_version4 = __esm({
         return null;
       }
       async calculateAlphaVersion(context4, releaseType) {
-        const { baseVersion } = context4;
-        const currentBase = VersionUtils.getBaseVersionString(baseVersion);
-        const newBaseVersion = import_semver.default.inc(currentBase, releaseType);
-        if (!newBaseVersion) {
-          logger.error(`\u65E0\u6CD5\u6839\u636E\u6807\u7B7E ${releaseType} \u63A8\u5BFC\u65B0\u57FA\u7840\u53F7`);
-          return baseVersion;
+        const mainVersion = await versionManager.getLatestVersion("main");
+        const mainBaseVersion = mainVersion ? VersionUtils.getBaseVersionString(mainVersion) : "0.0.0";
+        const targetBaseVersion = import_semver.default.inc(mainBaseVersion, releaseType);
+        if (!targetBaseVersion) {
+          logger.error(`\u65E0\u6CD5\u6839\u636E\u6807\u7B7E ${releaseType} \u4ECEMain\u7248\u672C ${mainBaseVersion} \u63A8\u5BFC\u76EE\u6807\u7248\u672C`);
+          return context4.baseVersion;
         }
-        logger.info(`\u{1F3F7}\uFE0F \u6839\u636E\u6807\u7B7E ${releaseType} \u63A8\u5BFC\u57FA\u7840\u53F7: ${currentBase} -> ${newBaseVersion}`);
+        logger.info(`\u{1F3F7}\uFE0F \u6839\u636E\u6807\u7B7E ${releaseType} \u4ECEMain\u7248\u672C\u63A8\u5BFC\u76EE\u6807\u7248\u672C: ${mainBaseVersion} -> ${targetBaseVersion}`);
         const currentAlphaVersion = await versionManager.getLatestVersion("alpha");
         if (!currentAlphaVersion) {
-          const firstAlphaVersion = `${newBaseVersion}-alpha.0`;
+          const firstAlphaVersion = `${targetBaseVersion}-alpha.0`;
           logger.info(`\u{1F195} \u521B\u5EFA\u9996\u4E2AAlpha\u7248\u672C: ${firstAlphaVersion}`);
           return firstAlphaVersion;
         }
-        const lastAlphaBase = VersionUtils.getBaseVersionString(currentAlphaVersion);
-        if (import_semver.default.gt(newBaseVersion, lastAlphaBase)) {
-          const resultVersion = `${newBaseVersion}-alpha.0`;
-          logger.info(`\u{1F53C} \u63A8\u5BFC\u7248\u672C\u9AD8\u4E8E\u4E0A\u6B21\u7248\u672C (${newBaseVersion} > ${lastAlphaBase})\uFF0C\u91CD\u7F6E\u6D4B\u8BD5\u53F7: ${resultVersion}`);
+        const currentAlphaBaseVersion = VersionUtils.getBaseVersionString(currentAlphaVersion);
+        if (import_semver.default.gt(targetBaseVersion, currentAlphaBaseVersion)) {
+          const resultVersion = `${targetBaseVersion}-alpha.0`;
+          logger.info(`\u{1F53C} \u76EE\u6807\u7248\u672C\u9AD8\u4E8E\u5F53\u524DAlpha\u7248\u672C (${targetBaseVersion} > ${currentAlphaBaseVersion})\uFF0C\u91CD\u7F6E\u6D4B\u8BD5\u53F7: ${resultVersion}`);
           return resultVersion;
         } else {
           const incrementedVersion = import_semver.default.inc(currentAlphaVersion, "prerelease", "alpha");
           logger.info(
-            `\u{1F504} \u63A8\u5BFC\u7248\u672C\u4E0D\u9AD8\u4E8E\u4E0A\u6B21\u7248\u672C (${newBaseVersion} <= ${lastAlphaBase})\uFF0C\u9012\u589E\u6D4B\u8BD5\u53F7: ${incrementedVersion}`
+            `\u{1F504} \u76EE\u6807\u7248\u672C\u4E0D\u9AD8\u4E8E\u5F53\u524DAlpha\u7248\u672C (${targetBaseVersion} <= ${currentAlphaBaseVersion})\uFF0C\u9012\u589E\u6D4B\u8BD5\u53F7: ${incrementedVersion}`
           );
           return incrementedVersion || currentAlphaVersion;
         }
