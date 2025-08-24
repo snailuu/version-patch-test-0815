@@ -11,6 +11,35 @@ import {
   type VersionInfo,
   type VersionSummary,
 } from './types';
+import { createErrorComment, PRUtils } from './pr';
+
+// ==================== 错误处理辅助函数 ====================
+
+/**
+ * 抛出错误并创建PR评论（如果有PR）
+ */
+async function throwErrorWithComment(
+  errorMsg: string, 
+  context: string, 
+  pr: PRData | null = null, 
+  originalError?: unknown
+): Promise<never> {
+  // 尝试创建PR评论
+  if (pr) {
+    const prNumber = PRUtils.getCurrentPRNumber(pr);
+    if (prNumber) {
+      try {
+        await createErrorComment(prNumber, errorMsg);
+        logger.info(`已在 PR #${prNumber} 创建错误评论`);
+      } catch (commentError) {
+        logger.warning(`创建PR错误评论失败: ${commentError}`);
+      }
+    }
+  }
+  
+  // 抛出原始错误
+  throw new ActionError(errorMsg, context, originalError);
+}
 
 // ==================== 版本工具类 ====================
 
@@ -288,7 +317,7 @@ const versionManager = new VersionManager();
 /**
  * 验证目标分支是否允许进行版本升级（基于最新tag状态）
  */
-async function validateBranchVersionState(targetBranch: SupportedBranch): Promise<void> {
+async function validateBranchVersionState(targetBranch: SupportedBranch, pr: PRData | null = null): Promise<void> {
   const latestTag = await versionManager.getLatestTag();
   
   if (!latestTag) {
@@ -307,7 +336,7 @@ async function validateBranchVersionState(targetBranch: SupportedBranch): Promis
       if (latestTagType !== 'release' && latestTagType !== 'alpha') {
         const errorMsg = `Alpha分支只能在正式版本或Alpha版本后继续开发，当前最新版本: ${latestTag} (${latestTagType})`;
         logger.error(`❌ ${errorMsg}`);
-        throw new ActionError(errorMsg, 'validateBranchVersionState');
+        await throwErrorWithComment(errorMsg, 'validateBranchVersionState', pr);
       }
       break;
       
@@ -316,7 +345,7 @@ async function validateBranchVersionState(targetBranch: SupportedBranch): Promis
       if (latestTagType !== 'alpha' && latestTagType !== 'beta') {
         const errorMsg = `Beta分支只能在Alpha版本或Beta版本后继续开发，当前最新版本: ${latestTag} (${latestTagType})`;
         logger.error(`❌ ${errorMsg}`);
-        throw new ActionError(errorMsg, 'validateBranchVersionState');
+        await throwErrorWithComment(errorMsg, 'validateBranchVersionState', pr);
       }
       break;
       
@@ -325,7 +354,7 @@ async function validateBranchVersionState(targetBranch: SupportedBranch): Promis
       if (latestTagType !== 'beta') {
         const errorMsg = `Main分支只能在Beta测试完成后发布，当前最新版本: ${latestTag} (${latestTagType})`;
         logger.error(`❌ ${errorMsg}`);
-        throw new ActionError(errorMsg, 'validateBranchVersionState');
+        await throwErrorWithComment(errorMsg, 'validateBranchVersionState', pr);
       }
       break;
   }
@@ -442,7 +471,7 @@ class AlphaStrategy implements VersionUpgradeStrategy {
     }
 
     // 🚫 业务规则检查：基于最新tag状态验证是否允许Alpha开发
-    await validateBranchVersionState('alpha');
+    await validateBranchVersionState('alpha', pr);
 
     logger.info(`✅ 使用PR标签: ${releaseType} (来源: PR #${pr.number})`);
     return await this.calculateAlphaVersion(context, releaseType);
@@ -518,10 +547,10 @@ class BetaStrategy implements VersionUpgradeStrategy {
   }
 
   async execute(context: VersionUpgradeContext): Promise<string | null> {
-    const { sourceBranch } = context;
+    const { sourceBranch, pr } = context;
 
     // 🚫 业务规则检查：基于最新tag状态验证Beta分支操作
-    await validateBranchVersionState('beta');
+    await validateBranchVersionState('beta', pr);
 
     // 检查当前是否有Beta版本
     const currentBetaVersion = await versionManager.getLatestVersion('beta');
@@ -531,7 +560,7 @@ class BetaStrategy implements VersionUpgradeStrategy {
       if (sourceBranch !== 'alpha') {
         const errorMsg = `没有Beta版本时，只能从Alpha分支转换到Beta，当前源分支: ${sourceBranch}`;
         logger.error(`❌ ${errorMsg}`);
-        throw new ActionError(errorMsg, 'BetaStrategy');
+        await throwErrorWithComment(errorMsg, 'BetaStrategy', pr);
       }
       
       // 从Alpha创建第一个Beta版本
@@ -563,16 +592,16 @@ class MainStrategy implements VersionUpgradeStrategy {
   }
 
   async execute(context: VersionUpgradeContext): Promise<string | null> {
-    const { sourceBranch, baseVersion } = context;
+    const { sourceBranch, baseVersion, pr } = context;
 
     // 🚫 业务规则检查：基于最新tag状态验证Main分支发布
-    await validateBranchVersionState('main');
+    await validateBranchVersionState('main', pr);
 
     // 检查源分支是否为Beta：必须是真正的Beta分支
     if (sourceBranch !== 'beta') {
       const errorMsg = `Main分支只接受来自Beta分支的合并，当前源分支: ${sourceBranch}`;
       logger.error(`❌ ${errorMsg}`);
-      throw new ActionError(errorMsg, 'MainStrategy');
+      await throwErrorWithComment(errorMsg, 'MainStrategy', pr);
     }
 
     // 从Beta转换到Main：基于Beta版本的基础号修订正式版本号
@@ -623,7 +652,7 @@ const upgradeManager = new VersionUpgradeManager();
 /**
  * 获取目标分支的基础版本
  */
-export async function getBaseVersion(targetBranch: SupportedBranch): Promise<string | null> {
+export async function getBaseVersion(targetBranch: SupportedBranch, pr: PRData | null = null): Promise<string | null> {
   switch (targetBranch) {
     case 'alpha': {
       const currentAlphaVersion = await versionManager.getLatestVersion('alpha'); // 获取当前Alpha版本
@@ -668,7 +697,7 @@ export async function getBaseVersion(targetBranch: SupportedBranch): Promise<str
       // 既没有Beta也没有Alpha版本，说明合并错误
       const errorMsg = `Beta分支操作失败：既没有当前Beta版本也没有Alpha版本。Beta分支只能用于：1) Alpha功能转入Beta测试，2) Beta版本的bug修复`;
       logger.error(`❌ ${errorMsg}`);
-      throw new ActionError(errorMsg, 'getBaseVersion-beta');
+      await throwErrorWithComment(errorMsg, 'getBaseVersion-beta', pr);
     }
 
     case 'main': {
@@ -682,7 +711,7 @@ export async function getBaseVersion(targetBranch: SupportedBranch): Promise<str
       // 没有Beta版本，说明发布流程错误
       const errorMsg = `Main分支发布失败：没有可用的Beta版本。Main分支只能用于发布已完成测试的Beta版本`;
       logger.error(`❌ ${errorMsg}`);
-      throw new ActionError(errorMsg, 'getBaseVersion-main');
+      await throwErrorWithComment(errorMsg, 'getBaseVersion-main', pr);
     }
 
     default:
@@ -721,7 +750,7 @@ export async function calculateNewVersion(
 ): Promise<string | null> {
   try {
     // 获取上游分支的版本作为基础版本
-    const baseVersion = await getBaseVersion(targetBranch);
+    const baseVersion = await getBaseVersion(targetBranch, pr);
     if (!baseVersion) {
       logger.error(`❌ 无法获取 ${targetBranch} 分支的基础版本`);
       return null;

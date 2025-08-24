@@ -35,6 +35,11 @@ inputs:
     description: Enable automatic CHANGELOG generation
     required: false
     default: 'true'
+  
+  comment-title:
+    description: Title for PR comments (e.g., '📦 版本管理', 'Version Management')
+    required: false
+    default: '📦 版本管理'
 
 outputs:
   next-version:

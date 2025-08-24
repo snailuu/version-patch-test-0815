@@ -1,7 +1,7 @@
 import { context } from '@actions/github';
 import core, { logger } from './core';
 import { configureGitUser, syncBranches, updateVersionAndCreateTag } from './git';
-import { handlePreviewMode } from './pr';
+import { handlePreviewMode, createErrorComment, PRUtils } from './pr';
 import { ActionError, isSupportedBranch, type PRData, type SupportedBranch } from './types';
 import { calculateNewVersion, getBaseVersion } from './version';
 
@@ -128,12 +128,30 @@ async function run(): Promise<void> {
       core.setOutput('is-preview', 'false');
     }
   } catch (error: unknown) {
+    // 尝试获取PR信息来创建错误评论
+    let errorMessage = '';
     if (error instanceof ActionError) {
+      errorMessage = `${error.context}: ${error.message}`;
       logger.error(`Action执行失败: ${error.message} (${error.context})`);
-      core.setFailed(`${error.context}: ${error.message}`);
+      core.setFailed(errorMessage);
     } else {
+      errorMessage = String(error);
       logger.error(`未知错误: ${error}`);
-      core.setFailed(String(error));
+      core.setFailed(errorMessage);
+    }
+    
+    // 尝试在PR中创建错误评论（如果存在PR）
+    try {
+      const prPayload = context.payload.pull_request;
+      if (prPayload) {
+        const prNumber = PRUtils.getCurrentPRNumber(prPayload as PRData);
+        if (prNumber) {
+          await createErrorComment(prNumber, errorMessage);
+          logger.info(`已在 PR #${prNumber} 创建错误评论`);
+        }
+      }
+    } catch (commentError) {
+      logger.warning(`创建错误评论失败: ${commentError}`);
     }
   }
 }
