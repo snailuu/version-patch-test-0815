@@ -8,8 +8,43 @@ branding:
 
 inputs:
   token:
-    description: The NPM access token to use when publishing
+    description: The GitHub token to use for repository operations
     required: true
+  
+  version-prefix:
+    description: Version tag prefix (e.g., 'v', 'version-', 'rel-')
+    required: false
+    default: 'v'
+  
+  git-user-name:
+    description: Git user name for commits
+    required: false
+    default: 'GitHub Action'
+  
+  git-user-email:
+    description: Git user email for commits
+    required: false
+    default: 'action@github.com'
+  
+  supported-branches:
+    description: Comma-separated list of supported branches
+    required: false
+    default: 'main,beta,alpha'
+  
+  enable-changelog:
+    description: Enable automatic CHANGELOG generation
+    required: false
+    default: 'true'
+
+outputs:
+  next-version:
+    description: The next version that was calculated
+  
+  preview-version:
+    description: Preview version for PR comments
+  
+  is-preview:
+    description: Whether this was a preview run (true/false)
 
 runs:
   using: node20

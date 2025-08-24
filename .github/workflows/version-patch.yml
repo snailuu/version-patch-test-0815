@@ -41,6 +41,7 @@ jobs:
           path: dist
 
   version-path:
+    name: version-management-${{ github.event.pull_request.base.ref }}
     runs-on: ubuntu-latest
     # 🎯 简化条件：预览模式（有标签） + 执行模式（PR合并）
     if: |
