@@ -668,8 +668,8 @@ export async function getBaseVersion(targetBranch: SupportedBranch, pr: PRData |
       const alphaBaseVersion = VersionUtils.getBaseVersionString(currentAlphaVersion);
       const globalBaseVersion = VersionUtils.getBaseVersionString(globalHighestVersion);
       
-      if (semver.gte(globalBaseVersion, alphaBaseVersion)) {
-        // 全局版本大于等于Alpha基础版本，应该基于全局最高版本开始新的alpha开发
+      if (semver.gt(globalBaseVersion, alphaBaseVersion)) {
+        // 全局版本大于Alpha基础版本，应该基于全局最高版本开始新的alpha开发
         logger.info(`📌 Alpha分支基础版本: ${globalHighestVersion} (全局版本 ${globalBaseVersion} >= Alpha基础版本 ${alphaBaseVersion})`);
         return globalHighestVersion;
       } else {
