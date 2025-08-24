@@ -28244,9 +28244,9 @@ async function getBaseVersion(targetBranch) {
         logger.info(`\u{1F4CC} Main\u5206\u652F\u57FA\u7840\u7248\u672C: ${betaVersion} (\u57FA\u4E8EBeta\u7248\u672C)`);
         return betaVersion;
       }
-      const globalHighest = await versionManager.getGlobalHighestVersion();
-      logger.info(`\u{1F4CC} Main\u5206\u652F\u57FA\u7840\u7248\u672C: ${globalHighest} (\u65E0Beta\u7248\u672C\uFF0C\u57FA\u4E8E\u5168\u5C40\u6700\u9AD8\u7248\u672C)`);
-      return globalHighest;
+      const errorMsg = `Main\u5206\u652F\u53D1\u5E03\u5931\u8D25\uFF1A\u6CA1\u6709\u53EF\u7528\u7684Beta\u7248\u672C\u3002Main\u5206\u652F\u53EA\u80FD\u7528\u4E8E\u53D1\u5E03\u5DF2\u5B8C\u6210\u6D4B\u8BD5\u7684Beta\u7248\u672C`;
+      logger.error(`\u274C ${errorMsg}`);
+      throw new ActionError(errorMsg, "getBaseVersion-main");
     }
     default:
       return null;
@@ -28582,37 +28582,22 @@ var init_version4 = __esm({
       async execute(context4) {
         const { sourceBranch } = context4;
         await validateBranchVersionState("beta");
-        const isFromAlpha = sourceBranch.includes("alpha") || context4.currentBranchType === "alpha";
-        if (isFromAlpha) {
-          return await this.handleFromAlpha(context4);
-        } else {
-          return await this.handleFromNonAlpha(context4);
-        }
-      }
-      async handleFromAlpha(context4) {
-        const { baseVersion } = context4;
-        const alphaBaseVersion = VersionUtils.getBaseVersionString(baseVersion);
-        const betaVersion = `${alphaBaseVersion}-beta.0`;
-        logger.info(`\u{1F504} \u4ECEAlpha\u5206\u652F\u8F6C\u6362\u4E3ABeta: ${baseVersion} -> ${betaVersion}`);
-        return betaVersion;
-      }
-      async handleFromNonAlpha(context4) {
-        const { sourceBranch } = context4;
         const currentBetaVersion = await versionManager.getLatestVersion("beta");
         if (!currentBetaVersion) {
-          const errorMsg = `\u6CA1\u6709\u672A\u53D1\u5E03\u7684Beta\u6D4B\u8BD5\u53F7\uFF0C\u6765\u81EA\u975EAlpha\u5206\u652F (${sourceBranch}) \u7684\u65B0\u529F\u80FD\u5E94\u8BE5\u5408\u5E76\u5230Alpha\u5206\u652F`;
-          logger.error(`\u274C ${errorMsg}`);
-          throw new ActionError(errorMsg, "BetaFromNonAlphaStrategy");
-        }
-        const parsed = VersionUtils.parseVersion(currentBetaVersion);
-        if (!parsed || !parsed.prerelease || parsed.prerelease.length === 0) {
-          const errorMsg = `\u6CA1\u6709\u672A\u53D1\u5E03\u7684Beta\u6D4B\u8BD5\u53F7\uFF0C\u6765\u81EA\u975EAlpha\u5206\u652F (${sourceBranch}) \u7684\u65B0\u529F\u80FD\u5E94\u8BE5\u5408\u5E76\u5230Alpha\u5206\u652F`;
-          logger.error(`\u274C ${errorMsg}`);
-          throw new ActionError(errorMsg, "BetaFromNonAlphaStrategy");
+          if (sourceBranch !== "alpha") {
+            const errorMsg = `\u6CA1\u6709Beta\u7248\u672C\u65F6\uFF0C\u53EA\u80FD\u4ECEAlpha\u5206\u652F\u8F6C\u6362\u5230Beta\uFF0C\u5F53\u524D\u6E90\u5206\u652F: ${sourceBranch}`;
+            logger.error(`\u274C ${errorMsg}`);
+            throw new ActionError(errorMsg, "BetaStrategy");
+          }
+          const { baseVersion } = context4;
+          const alphaBaseVersion = VersionUtils.getBaseVersionString(baseVersion);
+          const betaVersion = `${alphaBaseVersion}-beta.0`;
+          logger.info(`\u{1F195} \u4ECEAlpha\u521B\u5EFA\u9996\u4E2ABeta\u7248\u672C: ${baseVersion} -> ${betaVersion}`);
+          return betaVersion;
         }
         const incrementedVersion = import_semver.default.inc(currentBetaVersion, "prerelease", "beta");
         logger.info(
-          `\u{1F41B} \u68C0\u6D4B\u5230\u6765\u81EA\u975EAlpha\u5206\u652F (${sourceBranch}) \u7684Bug\u4FEE\u590D\uFF0C\u9012\u589E\u6D4B\u8BD5\u53F7: ${currentBetaVersion} -> ${incrementedVersion}`
+          `\u{1F504} \u9012\u589EBeta\u6D4B\u8BD5\u53F7: ${currentBetaVersion} -> ${incrementedVersion} (\u6E90\u5206\u652F: ${sourceBranch})`
         );
         return incrementedVersion || currentBetaVersion;
       }
@@ -28623,10 +28608,9 @@ var init_version4 = __esm({
         return context4.targetBranch === "main";
       }
       async execute(context4) {
-        const { sourceBranch, baseVersion, currentBranchType } = context4;
+        const { sourceBranch, baseVersion } = context4;
         await validateBranchVersionState("main");
-        const isFromBeta = sourceBranch.includes("beta") || currentBranchType === "beta";
-        if (!isFromBeta) {
+        if (sourceBranch !== "beta") {
           const errorMsg = `Main\u5206\u652F\u53EA\u63A5\u53D7\u6765\u81EABeta\u5206\u652F\u7684\u5408\u5E76\uFF0C\u5F53\u524D\u6E90\u5206\u652F: ${sourceBranch}`;
           logger.error(`\u274C ${errorMsg}`);
           throw new ActionError(errorMsg, "MainStrategy");
@@ -29139,11 +29123,11 @@ init_types();
 var octokit = (0, import_github2.getOctokit)(core_default.getInput("token", { required: true }));
 var PRUtils = class {
   /**
-   * 获取当前 PR 号
+   * 获取当前 PR 号（优先使用payload数据）
    */
   static getCurrentPRNumber(pr) {
     var _a3;
-    return (pr == null ? void 0 : pr.number) || ((_a3 = import_github2.context.payload.pull_request) == null ? void 0 : _a3.number) || null;
+    return ((_a3 = import_github2.context.payload.pull_request) == null ? void 0 : _a3.number) || (pr == null ? void 0 : pr.number) || null;
   }
   /**
    * 从 PR 标签获取发布类型
@@ -29163,37 +29147,7 @@ var PRUtils = class {
     }
     return tempReleaseType;
   }
-  /**
-   * 验证PR标签的有效性
-   */
-  static validatePRLabels(labels = []) {
-    const versionLabels = labels.filter((label) => ["major", "minor", "patch"].includes(label.name));
-    const errors = [];
-    if (versionLabels.length > 1) {
-      errors.push(`\u68C0\u6D4B\u5230\u591A\u4E2A\u7248\u672C\u6807\u7B7E: ${versionLabels.map((l) => l.name).join(", ")}\uFF0C\u8BF7\u53EA\u4FDD\u7559\u4E00\u4E2A`);
-    }
-    return {
-      isValid: errors.length === 0,
-      errors
-    };
-  }
 };
-async function getCurrentPR() {
-  if (!import_github2.context.payload.pull_request) {
-    return null;
-  }
-  try {
-    const { data: pr } = await octokit.rest.pulls.get({
-      owner: import_github2.context.repo.owner,
-      repo: import_github2.context.repo.repo,
-      pull_number: import_github2.context.payload.pull_request.number
-    });
-    return pr;
-  } catch (error2) {
-    logger.warning(`\u83B7\u53D6\u5F53\u524D PR \u5931\u8D25: ${error2}`);
-    return null;
-  }
-}
 async function updatePRComment(prNumber, commentBody, identifier) {
   try {
     const { data: comments } = await octokit.rest.issues.listComments({
@@ -29259,13 +29213,6 @@ async function handlePreviewMode(pr, targetBranch, baseVersion, newVersion, rele
     return;
   }
   try {
-    if (pr == null ? void 0 : pr.labels) {
-      const validation = PRUtils.validatePRLabels(pr.labels);
-      if (!validation.isValid) {
-        await createErrorComment(prNumber, validation.errors.join("\\n"));
-        return;
-      }
-    }
     if (!newVersion) {
       await createVersionSkipComment(prNumber, targetBranch, baseVersion);
     } else {
@@ -29298,6 +29245,7 @@ async function handleExecutionMode(newVersion, targetBranch, pr) {
   }
 }
 async function run() {
+  var _a3;
   try {
     if (import_github3.context.eventName !== "pull_request") {
       logger.info(`\u53EA\u652F\u6301 pull_request \u4E8B\u4EF6\uFF0C\u5F53\u524D\u4E8B\u4EF6: ${import_github3.context.eventName}`);
@@ -29310,7 +29258,28 @@ async function run() {
     }
     const targetBranch = prPayload.base.ref;
     const sourceBranch = prPayload.head.ref;
-    const pr = await getCurrentPR();
+    const prNumber = prPayload.number;
+    const runId = process.env.GITHUB_RUN_ID;
+    const runNumber = process.env.GITHUB_RUN_NUMBER;
+    logger.info(`\u{1F50D} ===== Action\u8FD0\u884C\u5B9E\u4F8B\u4FE1\u606F =====`);
+    logger.info(`  - Action\u8FD0\u884CID: ${runId}`);
+    logger.info(`  - Action\u8FD0\u884C\u7F16\u53F7: ${runNumber}`);
+    logger.info(`  - \u5DE5\u4F5C\u6D41\u540D\u79F0: ${process.env.GITHUB_WORKFLOW}`);
+    logger.info(`  - \u4E8B\u4EF6\u7C7B\u578B: ${import_github3.context.eventName}`);
+    logger.info(`  - \u4E8B\u4EF6\u52A8\u4F5C: ${import_github3.context.payload.action}`);
+    logger.info(`\u{1F50D} ===== PR\u4FE1\u606F =====`);
+    logger.info(`  - payload.pull_request.number: ${(_a3 = import_github3.context.payload.pull_request) == null ? void 0 : _a3.number}`);
+    logger.info(`  - prPayload.number: ${prPayload.number}`);
+    logger.info(`  - prNumber: ${prNumber}`);
+    logger.info(`  - \u6E90\u5206\u652F (head.ref): ${sourceBranch}`);
+    logger.info(`  - \u76EE\u6807\u5206\u652F (base.ref): ${targetBranch}`);
+    logger.info(`  - PR\u6807\u9898: ${prPayload.title || "\u65E0"}`);
+    logger.info(`  - PR URL: ${prPayload.html_url || "\u65E0"}`);
+    logger.info(`\u{1F50D} ===== Context\u5B8C\u6574\u4FE1\u606F =====`);
+    logger.info(`  - context.sha: ${import_github3.context.sha}`);
+    logger.info(`  - context.ref: ${import_github3.context.ref}`);
+    logger.info(`  - context.payload keys: ${Object.keys(import_github3.context.payload).join(", ")}`);
+    const pr = prPayload;
     const isMerged = prPayload.state === "closed" && prPayload.merged === true;
     const isDryRun = !isMerged;
     const eventType = isMerged ? "merge" : "preview";
