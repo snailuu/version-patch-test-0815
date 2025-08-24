@@ -1,9 +1,9 @@
-import type { ReleaseType } from 'semver';
+import { context } from '@actions/github';
 import core, { logger } from './core';
 import { configureGitUser, syncBranches, updateVersionAndCreateTag } from './git';
-import { determineReleaseType, getEventInfo, handlePreviewMode } from './pr';
+import { getCurrentPR, handlePreviewMode } from './pr';
 import { ActionError, isSupportedBranch, type PRData, type SupportedBranch } from './types';
-import { calculateNewVersion, getBaseVersion, getVersionInfo } from './version';
+import { calculateNewVersion, getBaseVersion } from './version';
 
 // ==================== 主执行函数 ====================
 
@@ -14,9 +14,8 @@ async function handleExecutionMode(
   newVersion: string,
   targetBranch: SupportedBranch,
   pr: PRData | null,
-  releaseType: ReleaseType | '',
 ): Promise<void> {
-  await updateVersionAndCreateTag(newVersion, targetBranch, pr, releaseType);
+  await updateVersionAndCreateTag(newVersion, targetBranch, pr);
   const syncResults = await syncBranches(targetBranch, newVersion);
 
   // 检查同步结果
@@ -28,15 +27,28 @@ async function handleExecutionMode(
 
 /**
  * 主执行函数 - 自动版本升级和分支同步
- * 简化的流程控制，将复杂逻辑委托给各个模块
  */
 async function run(): Promise<void> {
   try {
-    // 1. 获取事件信息和目标分支
-    const eventInfo = await getEventInfo();
-    if (!eventInfo) return;
+    // 1. 直接从 GitHub context 获取必要信息
+    if (context.eventName !== 'pull_request') {
+      logger.info(`只支持 pull_request 事件，当前事件: ${context.eventName}`);
+      return;
+    }
 
-    const { targetBranch, isDryRun, pr, eventType } = eventInfo;
+    const prPayload = context.payload.pull_request;
+    if (!prPayload) {
+      logger.error('PR payload 不存在');
+      return;
+    }
+
+    // 获取源分支和目标分支信息
+    const targetBranch = prPayload.base.ref;
+    const sourceBranch = prPayload.head.ref;
+    const pr = await getCurrentPR();
+    const isMerged = prPayload.state === 'closed' && prPayload.merged === true;
+    const isDryRun = !isMerged;
+    const eventType = isMerged ? 'merge' : 'preview';
 
     // 类型守卫：确保 targetBranch 是支持的分支类型
     if (!isSupportedBranch(targetBranch)) {
@@ -44,38 +56,33 @@ async function run(): Promise<void> {
       return;
     }
 
-    logger.info(`目标分支: ${targetBranch} (${eventType}模式${isDryRun ? ' - 预览' : ' - 执行'})`);
+    logger.info(
+      `分支合并方向: ${sourceBranch} → ${targetBranch} (${eventType}模式${isDryRun ? ' - 预览' : ' - 执行'})`,
+    );
 
     // 2. 配置 Git 用户信息
     await configureGitUser();
 
-    // 3. 获取版本信息
-    const versionInfo = await getVersionInfo(targetBranch);
+    // 3. 获取基础版本（用于显示当前版本）
+    const baseVersion = await getBaseVersion(targetBranch);
 
-    // 4. 确定版本升级类型（简化逻辑）
-    const releaseType = await determineReleaseType(pr, targetBranch);
-    logger.info(`📋 版本升级类型: ${releaseType || '无'}`);
-
-    // 5. 获取基础版本（用于显示真实的当前版本）
-    const baseVersion = await getBaseVersion(targetBranch, versionInfo);
-
-    // 6. 计算新版本号
-    const newVersion = await calculateNewVersion(targetBranch, versionInfo, releaseType);
+    // 4. 根据分支策略计算新版本号（策略内部自行判断是否需要PR标签）
+    const newVersion = await calculateNewVersion(targetBranch, sourceBranch, pr);
 
     // 改进日志输出，提供更多调试信息
     if (newVersion) {
       logger.info(`🎯 ${isDryRun ? '预览' : '新'}版本: ${newVersion}`);
     } else {
       logger.warning(
-        `⚠️ 版本计算结果为空 - 目标分支: ${targetBranch}, 发布类型: ${releaseType || '无'}, 基础版本: ${baseVersion || '无'}`,
+        `⚠️ 版本计算结果为空 - 合并方向: ${sourceBranch} → ${targetBranch}, 基础版本: ${baseVersion || '无'}`,
       );
     }
 
-    // 7. 根据模式执行相应操作
+    // 5. 根据模式执行相应操作
     if (isDryRun) {
       // 预览模式：更新 PR 评论
       logger.info('📝 执行预览模式...');
-      await handlePreviewMode(pr, targetBranch, baseVersion, newVersion, releaseType);
+      await handlePreviewMode(pr, targetBranch, baseVersion, newVersion, '');
       core.setOutput('preview-version', newVersion || '');
       core.setOutput('is-preview', 'true');
     } else {
@@ -84,14 +91,12 @@ async function run(): Promise<void> {
 
       if (newVersion) {
         // 有新版本：更新版本并同步分支 - 传递PR信息给CHANGELOG生成
-        await handleExecutionMode(newVersion, targetBranch, pr, releaseType);
+        await handleExecutionMode(newVersion, targetBranch, pr);
         core.setOutput('next-version', newVersion);
         logger.info(`✅ 版本更新完成: ${newVersion}`);
       } else {
         // 无新版本：记录详细信息但不阻塞流程
-        logger.info(
-          `ℹ️ 无需版本升级 - 目标分支: ${targetBranch}, 当前版本: ${baseVersion || '无'}, 发布类型: ${releaseType || '无'}`,
-        );
+        logger.info(`ℹ️ 无需版本升级 - 合并方向: ${sourceBranch} → ${targetBranch}, 当前版本: ${baseVersion || '无'}`);
         core.setOutput('next-version', '');
       }
 
