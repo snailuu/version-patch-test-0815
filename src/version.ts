@@ -495,41 +495,42 @@ class AlphaStrategy implements VersionUpgradeStrategy {
   }
 
   private async calculateAlphaVersion(context: VersionUpgradeContext, releaseType: ReleaseType): Promise<string> {
-    const { baseVersion } = context;
-
-    // 根据标签类型推导基础号 (x.x.x)
-    const currentBase = VersionUtils.getBaseVersionString(baseVersion);
-    const newBaseVersion = semver.inc(currentBase, releaseType);
-    if (!newBaseVersion) {
-      logger.error(`无法根据标签 ${releaseType} 推导新基础号`);
-      return baseVersion;
+    // 获取Main分支的版本作为基础
+    const mainVersion = await versionManager.getLatestVersion('main');
+    const mainBaseVersion = mainVersion ? VersionUtils.getBaseVersionString(mainVersion) : '0.0.0';
+    
+    // 根据标签类型从Main版本推导目标基础版本号
+    const targetBaseVersion = semver.inc(mainBaseVersion, releaseType);
+    if (!targetBaseVersion) {
+      logger.error(`无法根据标签 ${releaseType} 从Main版本 ${mainBaseVersion} 推导目标版本`);
+      return context.baseVersion;
     }
 
-    logger.info(`🏷️ 根据标签 ${releaseType} 推导基础号: ${currentBase} -> ${newBaseVersion}`);
+    logger.info(`🏷️ 根据标签 ${releaseType} 从Main版本推导目标版本: ${mainBaseVersion} -> ${targetBaseVersion}`);
 
     // 获取当前Alpha分支的最新版本
     const currentAlphaVersion = await versionManager.getLatestVersion('alpha');
 
     if (!currentAlphaVersion) {
       // 没有Alpha版本，创建第一个版本
-      const firstAlphaVersion = `${newBaseVersion}-alpha.0`;
+      const firstAlphaVersion = `${targetBaseVersion}-alpha.0`;
       logger.info(`🆕 创建首个Alpha版本: ${firstAlphaVersion}`);
       return firstAlphaVersion;
     }
 
-    // 比较推导的版本和上一次的版本
-    const lastAlphaBase = VersionUtils.getBaseVersionString(currentAlphaVersion);
+    // 比较目标版本和当前Alpha版本的基础号
+    const currentAlphaBaseVersion = VersionUtils.getBaseVersionString(currentAlphaVersion);
 
-    if (semver.gt(newBaseVersion, lastAlphaBase)) {
-      // 推导版本高于上次版本 -> 修改基础号并重置测试号计数为0
-      const resultVersion = `${newBaseVersion}-alpha.0`;
-      logger.info(`🔼 推导版本高于上次版本 (${newBaseVersion} > ${lastAlphaBase})，重置测试号: ${resultVersion}`);
+    if (semver.gt(targetBaseVersion, currentAlphaBaseVersion)) {
+      // 目标版本高于当前Alpha版本 -> 使用新的目标版本并重置测试号
+      const resultVersion = `${targetBaseVersion}-alpha.0`;
+      logger.info(`🔼 目标版本高于当前Alpha版本 (${targetBaseVersion} > ${currentAlphaBaseVersion})，重置测试号: ${resultVersion}`);
       return resultVersion;
     } else {
-      // 推导版本低于或等于上次版本 -> 只增加测试号计数
+      // 目标版本不高于当前Alpha版本 -> 只递增测试号计数
       const incrementedVersion = semver.inc(currentAlphaVersion, 'prerelease', 'alpha');
       logger.info(
-        `🔄 推导版本不高于上次版本 (${newBaseVersion} <= ${lastAlphaBase})，递增测试号: ${incrementedVersion}`,
+        `🔄 目标版本不高于当前Alpha版本 (${targetBaseVersion} <= ${currentAlphaBaseVersion})，递增测试号: ${incrementedVersion}`,
       );
       return incrementedVersion || currentAlphaVersion;
     }
