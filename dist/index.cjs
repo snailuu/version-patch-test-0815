@@ -28489,10 +28489,12 @@ var init_version4 = __esm({
         return _VersionUtils.addVersionPrefix(_VersionUtils.cleanVersion(version));
       }
       /**
-       * 安全解析版本号
+       * 安全解析版本号（处理不规范的prerelease格式）
        */
       static parseVersion(version) {
-        return import_semver.default.parse(_VersionUtils.cleanVersion(version));
+        let cleanVersion = _VersionUtils.cleanVersion(version);
+        cleanVersion = cleanVersion.replace(/-0-(alpha|beta)\./, "-$1.");
+        return import_semver.default.parse(cleanVersion);
       }
       /**
        * 获取版本的基础版本号（不含预发布标识）
@@ -28691,7 +28693,8 @@ var init_version4 = __esm({
       async calculateAlphaVersion(context4, releaseType) {
         const mainVersion = await versionManager.getLatestVersion("main");
         const mainBaseVersion = mainVersion ? VersionUtils.getBaseVersionString(mainVersion) : "0.0.0";
-        const targetBaseVersion = import_semver.default.inc(mainBaseVersion, releaseType);
+        const baseReleaseType = releaseType === "premajor" ? "major" : releaseType === "preminor" ? "minor" : releaseType === "prepatch" ? "patch" : releaseType;
+        const targetBaseVersion = import_semver.default.inc(mainBaseVersion, baseReleaseType);
         if (!targetBaseVersion) {
           logger.error(`\u65E0\u6CD5\u6839\u636E\u6807\u7B7E ${releaseType} \u4ECEMain\u7248\u672C ${mainBaseVersion} \u63A8\u5BFC\u76EE\u6807\u7248\u672C`);
           return context4.baseVersion;

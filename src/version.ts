@@ -98,10 +98,15 @@ export class VersionUtils {
   }
 
   /**
-   * 安全解析版本号
+   * 安全解析版本号（处理不规范的prerelease格式）
    */
   static parseVersion(version: string): semver.SemVer | null {
-    return semver.parse(VersionUtils.cleanVersion(version));
+    let cleanVersion = VersionUtils.cleanVersion(version);
+    
+    // 修复不规范的prerelease格式（如 1.0.0-0-alpha.0 -> 1.0.0-alpha.0）
+    cleanVersion = cleanVersion.replace(/-0-(alpha|beta)\./, '-$1.');
+    
+    return semver.parse(cleanVersion);
   }
 
   /**
@@ -499,8 +504,14 @@ class AlphaStrategy implements VersionUpgradeStrategy {
     const mainVersion = await versionManager.getLatestVersion('main');
     const mainBaseVersion = mainVersion ? VersionUtils.getBaseVersionString(mainVersion) : '0.0.0';
     
+    // 将prerelease类型转换为对应的正式版本类型
+    const baseReleaseType: ReleaseType = releaseType === 'premajor' ? 'major' 
+                                        : releaseType === 'preminor' ? 'minor'
+                                        : releaseType === 'prepatch' ? 'patch'
+                                        : releaseType;
+    
     // 根据标签类型从Main版本推导目标基础版本号
-    const targetBaseVersion = semver.inc(mainBaseVersion, releaseType);
+    const targetBaseVersion = semver.inc(mainBaseVersion, baseReleaseType);
     if (!targetBaseVersion) {
       logger.error(`无法根据标签 ${releaseType} 从Main版本 ${mainBaseVersion} 推导目标版本`);
       return context.baseVersion;
