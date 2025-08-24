@@ -50,6 +50,12 @@ export const GIT_USER_CONFIG = {
   email: core.getInput('git-user-email') || 'action@github.com',
 } as const;
 
+/** 评论配置 */
+export const COMMENT_CONFIG = {
+  /** 评论标题（可通过action输入覆盖） */
+  title: core.getInput('comment-title') || '📦 版本管理',
+} as const;
+
 /** 默认版本号 */
 export const DEFAULT_VERSIONS = {
   base: '0.0.0',
@@ -62,7 +68,7 @@ export const DEFAULT_VERSIONS = {
 /** 评论模板 */
 export const COMMENT_TEMPLATES = {
   /** 版本管理评论模板 */
-  VERSION_PREVIEW: (data: VersionPreviewData) => `## 📦 版本管理
+  VERSION_PREVIEW: (data: VersionPreviewData) => `## ${COMMENT_CONFIG.title}
 
 | 项目 | 值 |
 |------|-----|
@@ -74,7 +80,7 @@ export const COMMENT_TEMPLATES = {
 > ℹ️ 这是预览模式，合并 PR 后将自动创建 tag 并更新版本。`,
 
   /** 错误评论模板 */
-  ERROR: (errorMessage: string) => `## 📦 版本管理
+  ERROR: (errorMessage: string) => `## ${COMMENT_CONFIG.title}
 
 ❌ **错误信息**
 
@@ -83,7 +89,7 @@ ${errorMessage}
 > 请确保在创建新功能之前，所有已有功能都已完成完整的发布流程（alpha → beta → main）。`,
 
   /** 版本跳过模板 */
-  VERSION_SKIP: (targetBranch: string, baseVersion: string | null) => `## 📦 版本管理
+  VERSION_SKIP: (targetBranch: string, baseVersion: string | null) => `## ${COMMENT_CONFIG.title}
 
 | 项目 | 值 |
 |------|-----|

@@ -1,7 +1,7 @@
 import { context, getOctokit } from '@actions/github';
 import type { ReleaseType } from 'semver';
 import core, { logger } from './core';
-import { ActionError, COMMENT_TEMPLATES, type PRData, type VersionPreviewData } from './types';
+import { ActionError, COMMENT_TEMPLATES, COMMENT_CONFIG, type PRData, type VersionPreviewData } from './types';
 
 // ==================== GitHub API 客户端 ====================
 
@@ -114,7 +114,7 @@ export async function updatePRComment(prNumber: number, commentBody: string, ide
 export async function createVersionPreviewComment(prNumber: number, data: VersionPreviewData): Promise<void> {
   try {
     const commentBody = COMMENT_TEMPLATES.VERSION_PREVIEW(data);
-    await updatePRComment(prNumber, commentBody, '## 📦 版本管理');
+    await updatePRComment(prNumber, commentBody, `## ${COMMENT_CONFIG.title}`);
   } catch (error) {
     throw new ActionError(`创建版本管理评论失败: ${error}`, 'createVersionPreviewComment', error);
   }
@@ -130,7 +130,7 @@ export async function createVersionSkipComment(
 ): Promise<void> {
   try {
     const commentBody = COMMENT_TEMPLATES.VERSION_SKIP(targetBranch, baseVersion);
-    await updatePRComment(prNumber, commentBody, '## 📦 版本管理');
+    await updatePRComment(prNumber, commentBody, `## ${COMMENT_CONFIG.title}`);
   } catch (error) {
     throw new ActionError(`创建版本跳过评论失败: ${error}`, 'createVersionSkipComment', error);
   }
@@ -142,7 +142,7 @@ export async function createVersionSkipComment(
 export async function createErrorComment(prNumber: number, errorMessage: string): Promise<void> {
   try {
     const commentBody = COMMENT_TEMPLATES.ERROR(errorMessage);
-    await updatePRComment(prNumber, commentBody, '## 📦 版本管理');
+    await updatePRComment(prNumber, commentBody, `## ${COMMENT_CONFIG.title}`);
   } catch (error) {
     logger.warning(`创建错误评论失败: ${error}`);
   }
