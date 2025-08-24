@@ -528,9 +528,8 @@ class BetaStrategy implements VersionUpgradeStrategy {
 
     if (!currentBetaVersion) {
       // 没有Beta版本，必须是从Alpha转换而来
-      const isFromAlpha = sourceBranch === 'alpha' || context.currentBranchType === 'alpha';
-      if (!isFromAlpha) {
-        const errorMsg = `没有Beta版本时，只能从Alpha分支转换到Beta，当前源分支: ${sourceBranch}，当前版本类型: ${context.currentBranchType}`;
+      if (sourceBranch !== 'alpha') {
+        const errorMsg = `没有Beta版本时，只能从Alpha分支转换到Beta，当前源分支: ${sourceBranch}`;
         logger.error(`❌ ${errorMsg}`);
         throw new ActionError(errorMsg, 'BetaStrategy');
       }
@@ -564,16 +563,14 @@ class MainStrategy implements VersionUpgradeStrategy {
   }
 
   async execute(context: VersionUpgradeContext): Promise<string | null> {
-    const { sourceBranch, baseVersion, currentBranchType } = context;
+    const { sourceBranch, baseVersion } = context;
 
     // 🚫 业务规则检查：基于最新tag状态验证Main分支发布
     await validateBranchVersionState('main');
 
-    // 检查源分支是否为Beta：必须是真正的Beta分支，不能只是包含beta字符串
-    const isFromBeta = sourceBranch === 'beta' || currentBranchType === 'beta';
-
-    if (!isFromBeta) {
-      const errorMsg = `Main分支只接受来自Beta分支的合并，当前源分支: ${sourceBranch}，当前版本类型: ${currentBranchType}`;
+    // 检查源分支是否为Beta：必须是真正的Beta分支
+    if (sourceBranch !== 'beta') {
+      const errorMsg = `Main分支只接受来自Beta分支的合并，当前源分支: ${sourceBranch}`;
       logger.error(`❌ ${errorMsg}`);
       throw new ActionError(errorMsg, 'MainStrategy');
     }
