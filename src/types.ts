@@ -1,10 +1,14 @@
 import type { getOctokit } from '@actions/github';
 import type { ReleaseType } from 'semver';
+import core from './core';
 
 // ==================== 基础类型定义 ====================
 
-export const SUPPORTED_BRANCHES = ['main', 'beta', 'alpha'] as const;
-export type SupportedBranch = (typeof SUPPORTED_BRANCHES)[number];
+export const SUPPORTED_BRANCHES = core
+  .getInput('supported-branches')
+  ?.split(',')
+  .map((b) => b.trim()) || ['main', 'beta', 'alpha'];
+export type SupportedBranch = 'main' | 'beta' | 'alpha';
 
 export type PRData = Awaited<ReturnType<ReturnType<typeof getOctokit>['rest']['pulls']['get']>>['data'];
 
@@ -34,16 +38,16 @@ export interface VersionPreviewData {
 export const VERSION_PREFIX_CONFIG = {
   /** 默认版本前缀 */
   default: 'v',
-  /** 自定义前缀（可通过环境变量覆盖） */
-  custom: process.env.VERSION_PREFIX || 'v',
+  /** 自定义前缀（可通过action输入覆盖） */
+  custom: core.getInput('version-prefix') || 'v',
   /** 支持的前缀列表（用于兼容性处理） */
   supported: ['v', 'version-', 'ver-', 'rel-'],
 } as const;
 
 /** Git 用户配置 */
 export const GIT_USER_CONFIG = {
-  name: 'GitHub Action',
-  email: 'action@github.com',
+  name: core.getInput('git-user-name') || 'GitHub Action',
+  email: core.getInput('git-user-email') || 'action@github.com',
 } as const;
 
 /** 默认版本号 */
@@ -57,8 +61,8 @@ export const DEFAULT_VERSIONS = {
 
 /** 评论模板 */
 export const COMMENT_TEMPLATES = {
-  /** 版本预览评论模板 */
-  VERSION_PREVIEW: (data: VersionPreviewData) => `## 📦 版本预览
+  /** 版本管理评论模板 */
+  VERSION_PREVIEW: (data: VersionPreviewData) => `## 📦 版本管理
 
 | 项目 | 值 |
 |------|-----|
@@ -70,14 +74,16 @@ export const COMMENT_TEMPLATES = {
 > ℹ️ 这是预览模式，合并 PR 后将自动创建 tag 并更新版本。`,
 
   /** 错误评论模板 */
-  ERROR: (errorMessage: string) => `## ❌ 版本管理错误
+  ERROR: (errorMessage: string) => `## 📦 版本管理
+
+❌ **错误信息**
 
 ${errorMessage}
 
 > 请确保在创建新功能之前，所有已有功能都已完成完整的发布流程（alpha → beta → main）。`,
 
   /** 版本跳过模板 */
-  VERSION_SKIP: (targetBranch: string, baseVersion: string | null) => `## ⏭️ 版本管理跳过
+  VERSION_SKIP: (targetBranch: string, baseVersion: string | null) => `## 📦 版本管理
 
 | 项目 | 值 |
 |------|-----|
@@ -127,7 +133,7 @@ export interface BranchSyncResult {
 // ==================== 常用类型守卫 ====================
 
 export function isSupportedBranch(branch: string): branch is SupportedBranch {
-  return SUPPORTED_BRANCHES.includes(branch as SupportedBranch);
+  return SUPPORTED_BRANCHES.includes(branch);
 }
 
 export function isValidReleaseType(type: string): type is ReleaseType {
