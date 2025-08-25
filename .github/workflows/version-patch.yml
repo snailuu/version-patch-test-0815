@@ -89,7 +89,7 @@ jobs:
           
           # NPM 发布配置
           enable-npm-publish: 'false'  # 是否启用 npm 自动发布
-          # npm-token: ${{ secrets.NPM_TOKEN }}  # npm 认证令牌，需要在仓库 Secrets 中设置
+          npm-token: ${{ secrets.NPM_TOKEN }}  # npm 认证令牌，需要在仓库 Secrets 中设置
           npm-registry: 'https://registry.npmjs.org/'  # npm 仓库地址，可指定私有仓库
           npm-tag: 'latest'  # 发布标签：latest(自动选择) | beta | alpha | 自定义标签
           npm-access: 'public'  # 包访问权限：public(公开) | restricted(私有，需付费账户)
