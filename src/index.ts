@@ -107,7 +107,7 @@ async function run(): Promise<void> {
     if (isDryRun) {
       // 预览模式：更新 PR 评论
       logger.info('📝 执行预览模式...');
-      await handlePreviewMode(pr, targetBranch, baseVersion, newVersion, '');
+      await handlePreviewMode(pr, sourceBranch, targetBranch, baseVersion, newVersion);
       core.setOutput('preview-version', newVersion || '');
       core.setOutput('is-preview', 'true');
     } else {

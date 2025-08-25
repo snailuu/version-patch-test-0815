@@ -26,10 +26,10 @@ export interface EventInfo {
 }
 
 export interface VersionPreviewData {
+  sourceBranch: string;
   targetBranch: string;
   currentVersion?: string;
   nextVersion: string;
-  releaseType: string;
 }
 
 // ==================== 配置常量 ====================
@@ -72,10 +72,10 @@ export const COMMENT_TEMPLATES = {
 
 | 项目 | 值 |
 |------|-----|
+| **源分支** | \`${data.sourceBranch}\` |
 | **目标分支** | \`${data.targetBranch}\` |
 | **当前版本** | \`${data.currentVersion || '无'}\` |
 | **下一版本** | \`${data.nextVersion}\` |
-| **发布类型** | \`${data.releaseType}\` |
 
 > ℹ️ 这是预览模式，合并 PR 后将自动创建 tag 并更新版本。`,
 

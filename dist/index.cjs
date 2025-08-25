@@ -26172,10 +26172,10 @@ var init_types = __esm({
 
 | \u9879\u76EE | \u503C |
 |------|-----|
+| **\u6E90\u5206\u652F** | \`${data.sourceBranch}\` |
 | **\u76EE\u6807\u5206\u652F** | \`${data.targetBranch}\` |
 | **\u5F53\u524D\u7248\u672C** | \`${data.currentVersion || "\u65E0"}\` |
 | **\u4E0B\u4E00\u7248\u672C** | \`${data.nextVersion}\` |
-| **\u53D1\u5E03\u7C7B\u578B** | \`${data.releaseType}\` |
 
 > \u2139\uFE0F \u8FD9\u662F\u9884\u89C8\u6A21\u5F0F\uFF0C\u5408\u5E76 PR \u540E\u5C06\u81EA\u52A8\u521B\u5EFA tag \u5E76\u66F4\u65B0\u7248\u672C\u3002`,
       /** 错误评论模板 */
@@ -28188,7 +28188,7 @@ async function createErrorComment(prNumber, errorMessage) {
     logger.warning(`\u521B\u5EFA\u9519\u8BEF\u8BC4\u8BBA\u5931\u8D25: ${error2}`);
   }
 }
-async function handlePreviewMode(pr, targetBranch, baseVersion, newVersion, releaseType) {
+async function handlePreviewMode(pr, sourceBranch, targetBranch, baseVersion, newVersion) {
   const prNumber = PRUtils.getCurrentPRNumber(pr);
   if (!prNumber) {
     logger.warning("\u65E0\u6CD5\u83B7\u53D6 PR \u53F7\uFF0C\u8DF3\u8FC7\u8BC4\u8BBA\u66F4\u65B0");
@@ -28199,10 +28199,10 @@ async function handlePreviewMode(pr, targetBranch, baseVersion, newVersion, rele
       await createVersionSkipComment(prNumber, targetBranch, baseVersion);
     } else {
       await createVersionPreviewComment(prNumber, {
+        sourceBranch,
         targetBranch,
         currentVersion: baseVersion || void 0,
-        nextVersion: newVersion,
-        releaseType
+        nextVersion: newVersion
       });
     }
   } catch (error2) {
@@ -29344,7 +29344,7 @@ async function run() {
     }
     if (isDryRun) {
       logger.info("\u{1F4DD} \u6267\u884C\u9884\u89C8\u6A21\u5F0F...");
-      await handlePreviewMode(pr, targetBranch, baseVersion, newVersion, "");
+      await handlePreviewMode(pr, sourceBranch, targetBranch, baseVersion, newVersion);
       core_default.setOutput("preview-version", newVersion || "");
       core_default.setOutput("is-preview", "true");
     } else {
