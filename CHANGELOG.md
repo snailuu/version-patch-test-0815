@@ -1,3 +1,9 @@
+## [v1.1.0-alpha.4] - 2025-08-25
+
+### 🐛 Bug Fixes
+- docs: 修改 readme ([#65](https://github.com/snailuu/version-patch-test-0815/pull/65))
+
+
 ## [v1.1.0-alpha.3] - 2025-08-25
 
 ### 🐛 Bug Fixes
@@ -189,6 +195,7 @@
 ### Bug Fixes
 
 * 修改构建流程 ([115042f](https://github.com/snailuu/version-patch-test-0815/commit/115042fd7c4c305694ee7d61f6c209235836ae8c))
+
 
 
 
