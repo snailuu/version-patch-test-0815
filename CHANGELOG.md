@@ -1,3 +1,51 @@
+## [v1.1.0-alpha.4] - 2025-08-25
+
+### 🐛 Bug Fixes
+- docs: 修改 readme ([#65](https://github.com/snailuu/version-patch-test-0815/pull/65))
+
+
+## [v1.1.0-alpha.3] - 2025-08-25
+
+### 🐛 Bug Fixes
+- Ci/npm ([#64](https://github.com/snailuu/version-patch-test-0815/pull/64))
+
+
+## [v1.1.0-alpha.2] - 2025-08-25
+
+### 🐛 Bug Fixes
+- feat:new alpha feat ([#63](https://github.com/snailuu/version-patch-test-0815/pull/63))
+
+
+## [v1.1.0-alpha.1] - 2025-08-25
+
+### 🐛 Bug Fixes
+- fix: 修改 package.json 私有 ([#62](https://github.com/snailuu/version-patch-test-0815/pull/62))
+
+
+## [v1.1.0-alpha.0] - 2025-08-25
+
+### ✨ Features
+- fix: 修复 npm 认证 ([#61](https://github.com/snailuu/version-patch-test-0815/pull/61))
+
+
+## [v1.0.1-alpha.2] - 2025-08-25
+
+### 🐛 Bug Fixes
+- feat: new alpha feat ([#60](https://github.com/snailuu/version-patch-test-0815/pull/60))
+
+
+## [v1.0.1-alpha.1] - 2025-08-25
+
+### 🐛 Bug Fixes
+- fix: 修改npm发布 ([#59](https://github.com/snailuu/version-patch-test-0815/pull/59))
+
+
+## [v1.0.1-alpha.0] - 2025-08-25
+
+### 🐛 Bug Fixes
+- feat: new alpha feat ([#58](https://github.com/snailuu/version-patch-test-0815/pull/58))
+
+
 ## [v1.0.0] - 2025-08-25
 
 ### 📝 Changes
@@ -147,6 +195,14 @@
 ### Bug Fixes
 
 * 修改构建流程 ([115042f](https://github.com/snailuu/version-patch-test-0815/commit/115042fd7c4c305694ee7d61f6c209235836ae8c))
+
+
+
+
+
+
+
+
 
 
 

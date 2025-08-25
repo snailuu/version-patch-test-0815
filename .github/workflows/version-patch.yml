@@ -78,3 +78,14 @@ jobs:
         uses: ./
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          
+          # 版本管理配置
+          version-prefix: 'v'  # 版本标签前缀，如 v1.0.0
+          git-user-name: 'GitHub Action'  # Git 提交时的用户名
+          git-user-email: 'action@github.com'  # Git 提交时的邮箱
+          supported-branches: 'main,beta,alpha'  # 支持版本管理的分支列表
+          enable-changelog: 'true'  # 自动生成和更新 CHANGELOG.md
+          comment-title: '📦 版本管理'  # PR 评论中显示的标题
+          
+          # NPM 发布配置 - Action 仓库本身不发布 npm 包
+          enable-npm-publish: 'false'  # Action 仓库本身禁用 npm 发布
