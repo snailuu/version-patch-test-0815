@@ -1,7 +1,7 @@
 import { context, getOctokit } from '@actions/github';
 import type { ReleaseType } from 'semver';
 import core, { logger } from './core';
-import { ActionError, COMMENT_TEMPLATES, COMMENT_CONFIG, type PRData, type VersionPreviewData } from './types';
+import { ActionError, COMMENT_CONFIG, COMMENT_TEMPLATES, type PRData, type VersionPreviewData } from './types';
 
 // ==================== GitHub API 客户端 ====================
 
@@ -43,7 +43,6 @@ export class PRUtils {
 
     return tempReleaseType;
   }
-
 }
 
 // ==================== PR 信息获取 ====================
@@ -214,4 +213,3 @@ export async function handlePreviewMode(
     }
   }
 }
-

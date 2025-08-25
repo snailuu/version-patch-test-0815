@@ -40,6 +40,36 @@ inputs:
     description: Title for PR comments (e.g., '📦 版本管理', 'Version Management')
     required: false
     default: '📦 版本管理'
+  
+  # NPM Publishing Configuration
+  enable-npm-publish:
+    description: Enable automatic npm publishing
+    required: false
+    default: 'false'
+  
+  npm-token:
+    description: NPM authentication token for publishing
+    required: false
+  
+  npm-registry:
+    description: NPM registry URL
+    required: false
+    default: 'https://registry.npmjs.org/'
+  
+  npm-tag:
+    description: NPM publish tag (will auto-determine based on branch if set to 'latest')
+    required: false
+    default: 'latest'
+  
+  npm-access:
+    description: NPM package access level (public/restricted)
+    required: false
+    default: 'public'
+  
+  npm-publish-strict:
+    description: Strict mode - fail workflow if npm publish fails
+    required: false
+    default: 'false'
 
 outputs:
   next-version:
@@ -50,6 +80,22 @@ outputs:
   
   is-preview:
     description: Whether this was a preview run (true/false)
+  
+  # NPM Publishing Outputs
+  published-version:
+    description: The version that was published to npm
+  
+  published-tag:
+    description: The npm tag used for publishing
+  
+  npm-registry:
+    description: The npm registry that was used
+  
+  npm-publish-failed:
+    description: Whether npm publish failed (true/false)
+  
+  npm-publish-error:
+    description: Error message if npm publish failed
 
 runs:
   using: node20

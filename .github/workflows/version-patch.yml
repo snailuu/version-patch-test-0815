@@ -78,3 +78,19 @@ jobs:
         uses: ./
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          
+          # 版本管理配置
+          version-prefix: 'v'  # 版本标签前缀，如 v1.0.0
+          git-user-name: 'GitHub Action'  # Git 提交时的用户名
+          git-user-email: 'action@github.com'  # Git 提交时的邮箱
+          supported-branches: 'main,beta,alpha'  # 支持版本管理的分支列表
+          enable-changelog: 'true'  # 自动生成和更新 CHANGELOG.md
+          comment-title: '📦 版本管理'  # PR 评论中显示的标题
+          
+          # NPM 发布配置
+          enable-npm-publish: 'false'  # 是否启用 npm 自动发布
+          npm-token: ${{ secrets.NPM_TOKEN }}  # npm 认证令牌，需要在仓库 Secrets 中设置
+          npm-registry: 'https://registry.npmjs.org/'  # npm 仓库地址，可指定私有仓库
+          npm-tag: 'latest'  # 发布标签：latest(自动选择) | beta | alpha | 自定义标签
+          npm-access: 'public'  # 包访问权限：public(公开) | restricted(私有，需付费账户)
+          npm-publish-strict: 'false'  # 严格模式：false(发布失败不中断) | true(发布失败则整个流程失败)

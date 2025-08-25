@@ -28363,7 +28363,9 @@ async function getBaseVersion(targetBranch, sourceBranch, pr = null) {
       }
       const alphaBaseVersion = VersionUtils.getBaseVersionString(currentAlphaVersion);
       if (alphaBaseVersion === mainBaseVersion) {
-        logger.info(`\u{1F4CC} Alpha\u5206\u652F\u57FA\u7840\u7248\u672C: ${mainVersion || VersionUtils.createDefaultVersion("base")} (Alpha\u57FA\u7840\u53F7\u4E0EMain\u4E00\u81F4\uFF0C\u51C6\u5907\u65B0\u529F\u80FD\u6D4B\u8BD5)`);
+        logger.info(
+          `\u{1F4CC} Alpha\u5206\u652F\u57FA\u7840\u7248\u672C: ${mainVersion || VersionUtils.createDefaultVersion("base")} (Alpha\u57FA\u7840\u53F7\u4E0EMain\u4E00\u81F4\uFF0C\u51C6\u5907\u65B0\u529F\u80FD\u6D4B\u8BD5)`
+        );
         return mainVersion || VersionUtils.createDefaultVersion("base");
       } else {
         logger.info(`\u{1F4CC} Alpha\u5206\u652F\u57FA\u7840\u7248\u672C: ${currentAlphaVersion} (Alpha\u57FA\u7840\u53F7\u4E0EMain\u4E0D\u4E00\u81F4\uFF0C\u5DF2\u6709\u529F\u80FD\u5728\u6D4B\u8BD5)`);
@@ -28467,8 +28469,8 @@ var init_version4 = __esm({
     init_dist4();
     import_semver = __toESM(require_semver2(), 1);
     init_core();
-    init_types();
     init_pr();
+    init_types();
     VersionUtils = class _VersionUtils {
       /**
        * 获取当前使用的版本前缀
@@ -28686,7 +28688,7 @@ var init_version4 = __esm({
         return context4.targetBranch === "alpha";
       }
       async execute(context4) {
-        const { pr, baseVersion } = context4;
+        const { pr } = context4;
         if (!(pr == null ? void 0 : pr.labels) || pr.labels.length === 0) {
           logger.info(`\u{1F4DB} Alpha\u5206\u652F\u65E0PR\u6807\u7B7E\uFF0C\u8DF3\u8FC7\u7248\u672C\u5347\u7EA7`);
           return null;
@@ -28735,11 +28737,15 @@ var init_version4 = __esm({
         } else {
           if (import_semver.default.gt(targetBaseVersion, currentAlphaBaseVersion)) {
             const newAlphaVersion = `${targetBaseVersion}-alpha.0`;
-            logger.info(`\u{1F53C} \u76EE\u6807\u7248\u672C\u9AD8\u4E8E\u5F53\u524DAlpha\u57FA\u7840\u7248\u672C (${targetBaseVersion} > ${currentAlphaBaseVersion})\uFF0C\u91CD\u7F6E\u7248\u672C\u7EBF: ${newAlphaVersion}`);
+            logger.info(
+              `\u{1F53C} \u76EE\u6807\u7248\u672C\u9AD8\u4E8E\u5F53\u524DAlpha\u57FA\u7840\u7248\u672C (${targetBaseVersion} > ${currentAlphaBaseVersion})\uFF0C\u91CD\u7F6E\u7248\u672C\u7EBF: ${newAlphaVersion}`
+            );
             return newAlphaVersion;
           } else {
             const incrementedVersion = import_semver.default.inc(currentAlphaVersion, "prerelease", "alpha");
-            logger.info(`\u{1F504} \u76EE\u6807\u7248\u672C\u4E0D\u9AD8\u4E8E\u5F53\u524DAlpha\u57FA\u7840\u7248\u672C (${targetBaseVersion} <= ${currentAlphaBaseVersion})\uFF0C\u9012\u589E\u6D4B\u8BD5\u53F7: ${incrementedVersion}`);
+            logger.info(
+              `\u{1F504} \u76EE\u6807\u7248\u672C\u4E0D\u9AD8\u4E8E\u5F53\u524DAlpha\u57FA\u7840\u7248\u672C (${targetBaseVersion} <= ${currentAlphaBaseVersion})\uFF0C\u9012\u589E\u6D4B\u8BD5\u53F7: ${incrementedVersion}`
+            );
             return incrementedVersion || currentAlphaVersion;
           }
         }
@@ -29253,6 +29259,100 @@ async function syncBranches(targetBranch, newVersion) {
   }
   return results;
 }
+function isNpmPublishEnabled() {
+  var _a3;
+  const enablePublish = (_a3 = core_default.getInput("enable-npm-publish")) == null ? void 0 : _a3.toLowerCase();
+  return enablePublish === "true";
+}
+function getNpmPublishConfig() {
+  const registry = core_default.getInput("npm-registry") || "https://registry.npmjs.org/";
+  const token = core_default.getInput("npm-token");
+  const tag = core_default.getInput("npm-tag") || "latest";
+  const access = core_default.getInput("npm-access") || "public";
+  return { registry, token, tag, access };
+}
+async function configureNpmAuth(registry, token) {
+  try {
+    await (0, import_exec2.exec)("npm", ["config", "set", "registry", registry]);
+    logger.info(`\u914D\u7F6Enpm registry: ${registry}`);
+    if (token) {
+      const registryUrl = new URL(registry);
+      const authKey = `${registryUrl.host}/:_authToken`;
+      await (0, import_exec2.exec)("npm", ["config", "set", authKey, token]);
+      logger.info("\u914D\u7F6Enpm\u8BA4\u8BC1token");
+    }
+  } catch (error2) {
+    throw new ActionError(`\u914D\u7F6Enpm\u8BA4\u8BC1\u5931\u8D25: ${error2}`, "configureNpmAuth", error2);
+  }
+}
+function determineNpmTag(version, targetBranch, configTag) {
+  if (configTag !== "latest") {
+    return configTag;
+  }
+  if (targetBranch === "main") {
+    return "latest";
+  } else if (targetBranch === "beta") {
+    return "beta";
+  } else if (targetBranch === "alpha") {
+    return "alpha";
+  }
+  const cleanVersion = VersionUtils.cleanVersion(version);
+  const parsed = VersionUtils.parseVersion(cleanVersion);
+  if ((parsed == null ? void 0 : parsed.prerelease) && parsed.prerelease.length > 0) {
+    const prereleaseId = parsed.prerelease[0];
+    if (prereleaseId === "alpha") return "alpha";
+    if (prereleaseId === "beta") return "beta";
+  }
+  return "latest";
+}
+async function publishToNpm(version, targetBranch, config) {
+  try {
+    const publishTag = determineNpmTag(version, targetBranch, config.tag);
+    logger.info(`\u51C6\u5907\u53D1\u5E03\u5230npm: \u7248\u672C=${version}, \u6807\u7B7E=${publishTag}, \u5206\u652F=${targetBranch}`);
+    await configureNpmAuth(config.registry, config.token);
+    const publishArgs = ["publish"];
+    if (config.access) {
+      publishArgs.push("--access", config.access);
+    }
+    publishArgs.push("--tag", publishTag);
+    await (0, import_exec2.exec)("npm", publishArgs);
+    logger.info(`\u2705 \u6210\u529F\u53D1\u5E03\u5230npm: ${version} (\u6807\u7B7E: ${publishTag})`);
+    core_default.setOutput("published-version", version);
+    core_default.setOutput("published-tag", publishTag);
+    core_default.setOutput("npm-registry", config.registry);
+  } catch (error2) {
+    const errorMessage = String(error2);
+    if (errorMessage.includes("version already exists") || errorMessage.includes("You cannot publish over the previously published versions")) {
+      logger.warning(`\u7248\u672C ${version} \u5DF2\u5B58\u5728\u4E8Enpm registry\uFF0C\u8DF3\u8FC7\u53D1\u5E03`);
+      return;
+    }
+    throw new ActionError(`npm\u53D1\u5E03\u5931\u8D25: ${error2}`, "publishToNpm", error2);
+  }
+}
+async function handleNpmPublish(version, targetBranch) {
+  var _a3;
+  if (!isNpmPublishEnabled()) {
+    logger.info("npm\u53D1\u5E03\u5DF2\u7981\u7528\uFF0C\u8DF3\u8FC7");
+    return;
+  }
+  try {
+    logger.info(`\u5F00\u59CBnpm\u53D1\u5E03\u6D41\u7A0B: \u7248\u672C=${version}, \u76EE\u6807\u5206\u652F=${targetBranch}`);
+    const config = getNpmPublishConfig();
+    if (!config.token) {
+      throw new ActionError("npm-token\u672A\u914D\u7F6E\uFF0C\u65E0\u6CD5\u53D1\u5E03\u5230npm", "handleNpmPublish");
+    }
+    await publishToNpm(version, targetBranch, config);
+    logger.info(`\u2705 ${targetBranch}\u5206\u652F\u7248\u672C ${version} npm\u53D1\u5E03\u5B8C\u6210`);
+  } catch (error2) {
+    logger.error(`npm\u53D1\u5E03\u5931\u8D25: ${error2}`);
+    core_default.setOutput("npm-publish-failed", "true");
+    core_default.setOutput("npm-publish-error", String(error2));
+    const strictMode = ((_a3 = core_default.getInput("npm-publish-strict")) == null ? void 0 : _a3.toLowerCase()) === "true";
+    if (strictMode) {
+      throw error2;
+    }
+  }
+}
 async function updateVersionAndCreateTag(newVersion, targetBranch, pr = null) {
   try {
     logger.info("\u5F00\u59CB\u6267\u884C\u7248\u672C\u66F4\u65B0...");
@@ -29269,6 +29369,7 @@ async function updateVersionAndCreateTag(newVersion, targetBranch, pr = null) {
     } else {
       logger.info("CHANGELOG \u65E0\u66F4\u6539\uFF0C\u8DF3\u8FC7\u63D0\u4EA4");
     }
+    await handleNpmPublish(newVersion, targetBranch);
   } catch (error2) {
     throw new ActionError(`\u7248\u672C\u66F4\u65B0\u548C\u6807\u7B7E\u521B\u5EFA\u5931\u8D25: ${error2}`, "updateVersionAndCreateTag", error2);
   }
