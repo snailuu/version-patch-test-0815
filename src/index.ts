@@ -89,7 +89,7 @@ async function run(): Promise<void> {
     await configureGitUser();
 
     // 3. 获取基础版本（用于显示当前版本）
-    const baseVersion = await getBaseVersion(targetBranch);
+    const baseVersion = await getBaseVersion(targetBranch, sourceBranch, pr);
 
     // 4. 根据分支策略计算新版本号（策略内部自行判断是否需要PR标签）
     const newVersion = await calculateNewVersion(targetBranch, sourceBranch, pr);
@@ -107,7 +107,7 @@ async function run(): Promise<void> {
     if (isDryRun) {
       // 预览模式：更新 PR 评论
       logger.info('📝 执行预览模式...');
-      await handlePreviewMode(pr, targetBranch, baseVersion, newVersion, '');
+      await handlePreviewMode(pr, sourceBranch, targetBranch, baseVersion, newVersion);
       core.setOutput('preview-version', newVersion || '');
       core.setOutput('is-preview', 'true');
     } else {

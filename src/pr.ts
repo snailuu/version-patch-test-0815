@@ -181,10 +181,10 @@ export async function determineReleaseType(pr: PRData | null, targetBranch: stri
  */
 export async function handlePreviewMode(
   pr: PRData | null,
+  sourceBranch: string,
   targetBranch: string,
   baseVersion: string | null,
   newVersion: string | null,
-  releaseType: ReleaseType | '',
 ): Promise<void> {
   const prNumber = PRUtils.getCurrentPRNumber(pr);
   if (!prNumber) {
@@ -198,10 +198,10 @@ export async function handlePreviewMode(
     } else {
       // 显示版本管理
       await createVersionPreviewComment(prNumber, {
+        sourceBranch,
         targetBranch,
         currentVersion: baseVersion || undefined,
         nextVersion: newVersion,
-        releaseType,
       });
     }
   } catch (error) {
