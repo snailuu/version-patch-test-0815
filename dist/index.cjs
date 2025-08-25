@@ -29277,7 +29277,7 @@ async function configureNpmAuth(registry, token) {
     logger.info(`\u914D\u7F6Enpm registry: ${registry}`);
     if (token) {
       const registryUrl = new URL(registry);
-      const authKey = `${registryUrl.host}/:_authToken`;
+      const authKey = `//${registryUrl.host}/:_authToken`;
       await (0, import_exec2.exec)("npm", ["config", "set", authKey, token]);
       logger.info("\u914D\u7F6Enpm\u8BA4\u8BC1token");
     }
