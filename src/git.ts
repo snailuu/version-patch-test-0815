@@ -702,7 +702,7 @@ async function configureNpmAuth(registry: string, token: string): Promise<void> 
     // 设置认证token
     if (token) {
       const registryUrl = new URL(registry);
-      const authKey = `${registryUrl.host}/:_authToken`;
+      const authKey = `//${registryUrl.host}/:_authToken`;
       await exec('npm', ['config', 'set', authKey, token]);
       logger.info('配置npm认证token');
     }
