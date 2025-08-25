@@ -1,7 +1,7 @@
 import { context } from '@actions/github';
 import core, { logger } from './core';
 import { configureGitUser, syncBranches, updateVersionAndCreateTag } from './git';
-import { handlePreviewMode, createErrorComment, PRUtils } from './pr';
+import { createErrorComment, handlePreviewMode, PRUtils } from './pr';
 import { ActionError, isSupportedBranch, type PRData, type SupportedBranch } from './types';
 import { calculateNewVersion, getBaseVersion } from './version';
 
@@ -46,7 +46,7 @@ async function run(): Promise<void> {
     const targetBranch = prPayload.base.ref;
     const sourceBranch = prPayload.head.ref;
     const prNumber = prPayload.number;
-    
+
     // 🔍 调试信息：输出完整的分支信息和运行实例标识
     const runId = process.env.GITHUB_RUN_ID;
     const runNumber = process.env.GITHUB_RUN_NUMBER;
@@ -68,7 +68,7 @@ async function run(): Promise<void> {
     logger.info(`  - context.sha: ${context.sha}`);
     logger.info(`  - context.ref: ${context.ref}`);
     logger.info(`  - context.payload keys: ${Object.keys(context.payload).join(', ')}`);
-    
+
     // 构建PR数据对象（使用payload数据，避免API重新获取导致的不一致）
     const pr: PRData = prPayload as PRData;
     const isMerged = prPayload.state === 'closed' && prPayload.merged === true;
@@ -139,7 +139,7 @@ async function run(): Promise<void> {
       logger.error(`未知错误: ${error}`);
       core.setFailed(errorMessage);
     }
-    
+
     // 尝试在PR中创建错误评论（如果存在PR）
     try {
       const prPayload = context.payload.pull_request;
