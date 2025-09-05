@@ -1,10 +1,10 @@
-import * as core from '@actions/core';
+import { debug, error, info, warning } from '@actions/core';
+
+export { getBooleanInput, getInput, setFailed, setOutput } from '@actions/core';
 
 export const logger = {
-  debug: core.debug,
-  info: core.info,
-  warning: core.warning,
-  error: core.error,
+  debug,
+  error,
+  info,
+  warning,
 };
-
-export default core;

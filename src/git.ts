@@ -1,121 +1,111 @@
-import { exec } from '@actions/exec';
+import process from 'node:process';
 import { context, getOctokit } from '@actions/github';
 import { readPackageJSON, resolvePackageJSON, writePackageJSON } from 'pkg-types';
-import core, { logger } from './core';
-import {
-  ActionError,
-  type BranchSyncResult,
-  COMMIT_TEMPLATES,
-  ERROR_MESSAGES,
-  GIT_USER_CONFIG,
-  type PRData,
-  type SupportedBranch,
-} from './types';
-import { VersionUtils } from './version';
+import { commitChangelog, hasChangelogChanges, updateChangelog } from './changelog';
+import { COMMIT_TEMPLATES, ERROR_MESSAGES, GIT_USER_CONFIG } from './constants';
+import { logger } from './core';
+import { handleNpmPublish } from './npm';
+import type { BranchSyncResult, PRData, SupportedBranch } from './types';
+import { ActionError, execGit, versionParse } from './utils';
+import { updatePackageVersion } from './version';
 
 // ==================== Git 基础操作 ====================
-
-/**
- * 统一的错误处理函数
- */
-function handleGitError(error: unknown, context: string, shouldThrow = false): void {
-  const message = `${context}: ${error}`;
-  logger.error(message);
-  if (shouldThrow) throw new ActionError(message, context, error);
-}
-
-/**
- * 执行 git 命令并捕获输出
- */
-export async function execGitWithOutput(args: string[]): Promise<string> {
-  let stdout = '';
-  try {
-    await exec('git', args, {
-      listeners: {
-        stdout: (data: Buffer) => {
-          stdout += data.toString();
-        },
-      },
-    });
-    return stdout.trim();
-  } catch (error) {
-    handleGitError(error, `执行 git ${args.join(' ')}`, true);
-    return '';
-  }
-}
-
-/**
- * 执行 git 命令（无输出捕获）
- */
-export async function execGit(args: string[]): Promise<void> {
-  try {
-    await exec('git', args);
-  } catch (error) {
-    handleGitError(error, `执行 git ${args.join(' ')}`, true);
-  }
-}
 
 /**
  * 配置 Git 用户信息
  */
 export async function configureGitUser(): Promise<void> {
   logger.info('配置 Git 用户信息');
-  await execGit(['config', '--global', 'user.name', GIT_USER_CONFIG.name]);
-  await execGit(['config', '--global', 'user.email', GIT_USER_CONFIG.email]);
+  await execGit(['config', '--global', 'user.name', GIT_USER_CONFIG.NAME]);
+  await execGit(['config', '--global', 'user.email', GIT_USER_CONFIG.EMAIL]);
 }
 
 /**
- * 检查文件是否有变化
+ * 在 PR merge 阶段提交版本更改（不推送，因为变更已包含在 merge 中）
  */
-export async function hasFileChanges(filepath: string): Promise<boolean> {
-  try {
-    // 检查文件是否存在
-    await exec('test', ['-f', filepath]);
-
-    // 检查是否有变化
-    const statusOutput = await execGitWithOutput(['status', '--porcelain', filepath]);
-    if (statusOutput.length > 0) {
-      logger.info(`检测到 ${filepath} 变化: ${statusOutput}`);
-      return true;
-    }
-
-    // 检查已跟踪文件的变化
-    try {
-      await exec('git', ['diff', '--exit-code', filepath]);
-      return false;
-    } catch {
-      return true;
-    }
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 提交并推送文件更改
- */
-export async function commitAndPushFile(
-  filepath: string,
-  commitMessage: string,
+export async function commitVersionForMerge(
+  version: string,
   targetBranch: SupportedBranch,
+  pr: PRData | null = null,
 ): Promise<void> {
   try {
-    await execGit(['add', filepath]);
+    const { pkgVersion: packageVersion, targetVersion: fullVersion } = versionParse(version);
+
+    logger.info(`🔄 为 PR #${pr?.number || 'N/A'} 准备版本更改...`);
+
+    // 确保在目标分支上进行操作
+    await execGit(['switch', targetBranch]);
+    logger.info(`已切换到 ${targetBranch} 分支`);
+
+    // 更新包版本
+    await updatePackageVersion(version);
+
+    // 生成 changelog（使用 PR 信息）
+    await updateChangelog(pr, version);
+
+    // 检查是否有 changelog 变更
+    const hasChanges = await hasChangelogChanges();
+    if (!hasChanges) {
+      logger.warning('⚠️ CHANGELOG 未生成任何内容，这将跳过 changelog 更新');
+    }
+
+    // 添加所有变更到暂存区
+    await execGit(['add', '.']);
+
+    // 创建提交
+    const commitMessage = `${COMMIT_TEMPLATES.VERSION_BUMP(packageVersion, targetBranch)}\n\n🤖 包含版本升级和 CHANGELOG 更新 (PR #${pr?.number || 'N/A'})`;
     await execGit(['commit', '-m', commitMessage]);
+
+    logger.info(`✅ 版本更改已提交到 ${targetBranch} 分支`);
+
+    // 推送更改到远程分支
     await execGit(['push', 'origin', targetBranch]);
-    logger.info(`${filepath} 更新已提交并推送`);
+    logger.info(`✅ 更改已推送到远程 ${targetBranch} 分支`);
+
+    logger.info(`🏷️ 标签: ${fullVersion}`);
+
+    // 创建版本标签
+    await execGit(['tag', fullVersion]);
+    logger.info(`✅ 标签已创建: ${fullVersion}`);
   } catch (error) {
-    handleGitError(error, `提交和推送 ${filepath}`, true);
+    const message = `为 PR merge 提交版本更改: ${error}`;
+    logger.error(message);
+    throw new ActionError(message, 'commitVersionForMerge', error);
   }
 }
 
 /**
- * 提交并推送版本更改
+ * 只推送标签（版本提交已在 commitVersionForMerge 中完成）
+ */
+export async function pushTagsOnly(version: string, targetBranch: SupportedBranch): Promise<void> {
+  try {
+    const { targetVersion: fullVersion } = versionParse(version);
+
+    logger.info(`🚀 推送标签到远程仓库: ${fullVersion}`);
+
+    // 确保在正确的分支上
+    await execGit(['switch', targetBranch]);
+
+    // 推送标签到远程仓库
+    await execGit(['push', 'origin', fullVersion]);
+
+    logger.info(`✅ 标签推送成功: ${fullVersion}`);
+
+    // NPM 发布（如果有配置）
+    await handleNpmPublish(version, targetBranch);
+  } catch (error) {
+    const message = `推送标签: ${error}`;
+    logger.error(message);
+    throw new ActionError(message, 'pushTagsOnly', error);
+  }
+}
+
+/**
+ * 提交并推送版本更改（保留原有的向后兼容）
  */
 export async function commitAndPushVersion(version: string, targetBranch: SupportedBranch): Promise<void> {
   try {
-    const packageVersion = VersionUtils.cleanVersion(version);
-    const fullVersion = VersionUtils.addVersionPrefix(version);
+    const { pkgVersion: packageVersion, targetVersion: fullVersion } = versionParse(version);
 
     // 提交版本更改
     await execGit(['add', '.']);
@@ -128,258 +118,109 @@ export async function commitAndPushVersion(version: string, targetBranch: Suppor
     // 推送更改和标签（添加冲突处理）
     await safePushWithRetry(targetBranch, fullVersion);
   } catch (error) {
-    handleGitError(error, '提交和推送版本更改', true);
+    const message = `提交和推送版本更改: ${error}`;
+    logger.error(message);
+    throw new ActionError(message, '提交和推送版本更改', error);
   }
 }
 
 /**
- * 安全推送，处理并发冲突
+ * 安全推送，处理并发冲突和分支保护
  */
 async function safePushWithRetry(targetBranch: SupportedBranch, version: string, maxRetries = 3): Promise<void> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      if (attempt > 1) {
-        logger.info(`🔄 尝试推送 (第${attempt}/${maxRetries}次)`);
-        // 拉取最新更改
-        await execGit(['fetch', 'origin', targetBranch]);
-        await execGit(['rebase', `origin/${targetBranch}`]);
-      }
-
-      // 推送分支和标签
-      await execGit(['push', 'origin', targetBranch]);
-      await execGit(['push', 'origin', version]);
-
+      await attemptPush(attempt, maxRetries, targetBranch, version);
       logger.info(`✅ 推送成功 (第${attempt}次尝试)`);
       return;
     } catch (error) {
-      if (attempt === maxRetries) {
-        logger.error(`❌ 推送失败，已尝试${maxRetries}次: ${error}`);
-        throw error;
-      }
-
-      logger.warning(`⚠️ 推送失败 (第${attempt}/${maxRetries}次)，可能存在并发冲突: ${error}`);
-
-      // 等待随机时间避免竞态
-      const delay = Math.random() * 2000 + 1000; // 1-3秒随机延迟
-      logger.info(`⏳ 等待 ${Math.round(delay)}ms 后重试...`);
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await handlePushAttemptError(error, attempt, maxRetries, targetBranch, version);
     }
   }
 }
 
-// ==================== CHANGELOG 操作 ====================
-
 /**
- * 基于PR信息生成CHANGELOG条目
+ * 执行单次推送尝试
  */
-async function generateChangelogFromPR(pr: PRData | null, version: string): Promise<string> {
-  if (!pr) {
-    return `### Changes\n- Version ${version} release\n`;
+async function attemptPush(
+  attempt: number,
+  maxRetries: number,
+  targetBranch: SupportedBranch,
+  version: string,
+): Promise<void> {
+  if (attempt > 1) {
+    logger.info(`🔄 尝试推送 (第${attempt}/${maxRetries}次)`);
+    await prepareForRetry(targetBranch);
   }
 
-  // PR标签到CHANGELOG类型的映射
-  const labelToChangelogType: Record<string, string> = {
-    major: '💥 Breaking Changes',
-    minor: '✨ Features',
-    patch: '🐛 Bug Fixes',
-    enhancement: '⚡ Improvements',
-    performance: '🚀 Performance',
-    security: '🔒 Security',
-    documentation: '📚 Documentation',
-    dependencies: '⬆️ Dependencies',
-  };
-
-  // 从PR标签推断变更类型
-  let changeType = '📝 Changes';
-  if (pr.labels) {
-    for (const label of pr.labels) {
-      if (labelToChangelogType[label.name]) {
-        changeType = labelToChangelogType[label.name];
-        break;
-      }
-    }
-
-    // 如果没找到特定类型，基于版本标签推断
-    if (changeType === '📝 Changes') {
-      const versionLabels = pr.labels.map((l) => l.name);
-      if (versionLabels.includes('major')) changeType = '💥 Breaking Changes';
-      else if (versionLabels.includes('minor')) changeType = '✨ Features';
-      else if (versionLabels.includes('patch')) changeType = '🐛 Bug Fixes';
-    }
-  }
-
-  // 构建CHANGELOG条目
-  let changelogEntry = `### ${changeType}\n`;
-
-  // 添加PR标题和链接
-  const prUrl = pr.html_url;
-  const prTitle = pr.title || `PR #${pr.number}`;
-  changelogEntry += `- ${prTitle} ([#${pr.number}](${prUrl}))\n`;
-
-  // 如果PR有body，提取关键信息
-  if (pr.body && pr.body.trim()) {
-    const body = pr.body.trim();
-
-    // 查找特定的section（如 "### Changes", "## What's Changed" 等）
-    const sections = [
-      '### Changes',
-      '## Changes',
-      "### What's Changed",
-      "## What's Changed",
-      '### Summary',
-      '## Summary',
-    ];
-    for (const section of sections) {
-      const sectionIndex = body.indexOf(section);
-      if (sectionIndex !== -1) {
-        const sectionContent = body.substring(sectionIndex + section.length);
-        const nextSectionIndex = sectionContent.search(/^##/m);
-        const content = nextSectionIndex !== -1 ? sectionContent.substring(0, nextSectionIndex) : sectionContent;
-
-        const cleanContent = content
-          .trim()
-          .split('\n')
-          .filter((line) => line.trim())
-          .slice(0, 5) // 最多5行
-          .map((line) => (line.startsWith('- ') ? `  ${line}` : `  - ${line}`))
-          .join('\n');
-
-        if (cleanContent) {
-          changelogEntry += `${cleanContent}\n`;
-          break;
-        }
-      }
-    }
-  }
-
-  return changelogEntry;
+  // 推送分支和标签 - 使用 --force-with-lease 处理分支保护
+  logger.info('📤 推送分支...');
+  await execGit(['push', 'origin', targetBranch, '--force-with-lease']);
+  logger.info('🏷️ 推送标签...');
+  await execGit(['push', 'origin', version]);
 }
 
 /**
- * 更新 CHANGELOG - 基于PR信息生成
+ * 为重试准备：拉取最新更改并解决冲突
  */
-export async function updateChangelog(pr: PRData | null = null, version: string = ''): Promise<void> {
-  // 检查是否启用CHANGELOG生成
-  const enableChangelog = core.getInput('enable-changelog')?.toLowerCase() !== 'false';
-  if (!enableChangelog) {
-    logger.info('CHANGELOG 生成已禁用，跳过');
-    return;
+async function prepareForRetry(targetBranch: SupportedBranch): Promise<void> {
+  // 拉取最新更改
+  await execGit(['fetch', 'origin', targetBranch]);
+  await execGit(['rebase', `origin/${targetBranch}`]);
+}
+
+/**
+ * 处理推送尝试中的错误
+ */
+async function handlePushAttemptError(
+  error: unknown,
+  attempt: number,
+  maxRetries: number,
+  targetBranch: SupportedBranch,
+  version: string,
+): Promise<void> {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+
+  if (attempt === maxRetries) {
+    await logFinalPushFailure(targetBranch, version, errorMessage);
+    throw error;
   }
 
-  try {
-    logger.info('开始生成基于PR的 CHANGELOG...');
+  logger.warning(`⚠️ 推送失败 (第${attempt}/${maxRetries}次)，可能存在并发冲突: ${errorMessage}`);
+  await waitForRetry();
+}
 
-    const currentDate = new Date().toISOString().split('T')[0];
-    const versionTag = version.startsWith('v') ? version : `v${version}`;
+/**
+ * 记录最终推送失败的详细信息
+ */
+async function logFinalPushFailure(
+  targetBranch: SupportedBranch,
+  version: string,
+  errorMessage: string,
+): Promise<void> {
+  logger.error(`❌ 推送失败，已尝试3次: ${errorMessage}`);
 
-    // 生成基于PR的CHANGELOG条目
-    const changelogEntry = await generateChangelogFromPR(pr, version);
+  // 提供诊断信息
+  logger.info('🔍 推送失败诊断：');
+  logger.info(`- 分支: ${targetBranch}`);
+  logger.info(`- 标签: ${version}`);
 
-    const newEntry = `## [${versionTag}] - ${currentDate}
-
-${changelogEntry}
-`;
-
-    // 读取现有CHANGELOG内容
-    let existingContent = '';
-    try {
-      let stdout = '';
-      await exec('cat', ['CHANGELOG.md'], {
-        listeners: {
-          stdout: (data: Buffer) => {
-            stdout += data.toString();
-          },
-        },
-      });
-      existingContent = stdout;
-      logger.info('读取现有CHANGELOG内容');
-    } catch {
-      // 如果文件不存在，创建初始内容
-      existingContent = `# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-`;
-      logger.info('CHANGELOG.md 不存在，创建新文件');
-    }
-
-    // 插入新条目到第一个版本记录之前
-    const lines = existingContent.split('\n');
-    let insertIndex = lines.length;
-
-    // 查找第一个版本标题的位置
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].match(/^## \[.*\]/)) {
-        insertIndex = i;
-        break;
-      }
-    }
-
-    // 插入新条目
-    const entryLines = newEntry.split('\n');
-    lines.splice(insertIndex, 0, ...entryLines);
-
-    // 写回文件
-    const newContent = lines.join('\n');
-    await exec('sh', ['-c', `cat > CHANGELOG.md << 'EOF'\n${newContent}\nEOF`]);
-
-    logger.info(`✅ CHANGELOG 已更新，添加版本 ${versionTag}`);
-
-    // 显示新增的内容预览
-    try {
-      let stdout = '';
-      await exec('head', ['-15', 'CHANGELOG.md'], {
-        listeners: {
-          stdout: (data: Buffer) => {
-            stdout += data.toString();
-          },
-        },
-      });
-      logger.info('📋 CHANGELOG 预览:');
-      logger.info(stdout);
-    } catch {
-      logger.info('无法显示CHANGELOG预览');
-    }
-  } catch (error) {
-    logger.warning(`基于PR的CHANGELOG生成失败: ${error}`);
-
-    // 如果失败，使用原来的conventional-changelog逻辑作为备用
-    await fallbackToConventionalChangelog();
+  if (errorMessage.includes('protected')) {
+    logger.error('🚨 分支保护问题：请确认 GitHub Actions 有推送权限');
+  }
+  if (errorMessage.includes('force-with-lease')) {
+    logger.error('🚨 强制推送被拒绝：可能存在远程更改冲突');
   }
 }
 
 /**
- * 备用方案：使用conventional-changelog
+ * 等待随机时间后重试
  */
-async function fallbackToConventionalChangelog(): Promise<void> {
-  try {
-    logger.info('使用conventional-changelog作为备用方案...');
-
-    // 检查是否已安装
-    try {
-      await exec('npx', ['conventional-changelog-cli', '--version']);
-    } catch {
-      await exec('npm', ['install', '-g', 'conventional-changelog-cli', 'conventional-changelog-conventionalcommits']);
-    }
-
-    await exec('npx', [
-      'conventional-changelog-cli',
-      '-p',
-      'conventionalcommits',
-      '-i',
-      'CHANGELOG.md',
-      '-s',
-      '-r',
-      '0',
-    ]);
-
-    logger.info('✅ 使用conventional-changelog生成完成');
-  } catch (error) {
-    logger.warning(`备用CHANGELOG生成也失败: ${error}`);
-  }
+async function waitForRetry(): Promise<void> {
+  // 等待随机时间避免竞态
+  const delay = Math.random() * 2000 + 1000; // 1-3秒随机延迟
+  logger.info(`⏳ 等待 ${Math.round(delay)}ms 后重试...`);
+  await new Promise((resolve) => setTimeout(resolve, delay));
 }
 
 // ==================== 分支同步逻辑 ====================
@@ -407,7 +248,8 @@ function isAutoSyncCommit(): boolean {
 function getCommitMessage(sourceBranch: SupportedBranch, targetBranch: SupportedBranch, version: string): string {
   if (sourceBranch === 'main' && targetBranch === 'beta') {
     return COMMIT_TEMPLATES.SYNC_MAIN_TO_BETA(version);
-  } else if (sourceBranch === 'beta' && targetBranch === 'alpha') {
+  }
+  if (sourceBranch === 'beta' && targetBranch === 'alpha') {
     return COMMIT_TEMPLATES.SYNC_BETA_TO_ALPHA(version);
   }
   return `chore: sync ${sourceBranch} v${version} to ${targetBranch} [skip ci]`;
@@ -428,7 +270,7 @@ async function resolveVersionConflicts(
     // 只合并非冲突文件，跳过版本文件
     await execGit(['merge', sourceBranch, '--no-commit', '--no-ff']);
 
-    // 手动处理package.json版本冲突
+    // 手动处理 package.json 版本冲突
     const pkgPath = await resolvePackageJSON();
     const sourcePkg = await readPackageJSON(pkgPath);
 
@@ -450,7 +292,7 @@ async function resolveVersionConflicts(
 }
 
 /**
- * 报告合并冲突，创建issue
+ * 报告合并冲突，创建 issue
  */
 async function reportMergeConflict(
   sourceBranch: SupportedBranch,
@@ -482,7 +324,7 @@ async function reportMergeConflict(
 详细日志请查看 GitHub Actions 运行记录。
 
 ---
-*此issue由版本管理Action自动创建*`;
+*此 issue 由版本管理 Action 自动创建*`;
 
     await octokit.rest.issues.create({
       owner: context.repo.owner,
@@ -492,9 +334,9 @@ async function reportMergeConflict(
       labels: ['merge-conflict', 'automated', 'priority-high'],
     });
 
-    logger.info(`已创建合并冲突issue: ${issueTitle}`);
+    logger.info(`已创建合并冲突 issue: ${issueTitle}`);
   } catch (error) {
-    logger.error(`创建合并冲突issue失败: ${error}`);
+    logger.error(`创建合并冲突 issue 失败: ${error}`);
   }
 }
 
@@ -533,7 +375,7 @@ async function handleMergeConflict(
     } catch (manualError) {
       logger.error(`手动解决冲突失败: ${manualError}`);
 
-      // 第四步：最后手段 - 创建issue报告冲突
+      // 第四步：最后手段 - 创建 issue 报告冲突
       await reportMergeConflict(sourceBranch, targetBranch, sourceVersion);
       throw new ActionError(ERROR_MESSAGES.MERGE_CONFLICT(sourceBranch, targetBranch), 'handleMergeConflict');
     }
@@ -541,14 +383,14 @@ async function handleMergeConflict(
 }
 
 /**
- * 同步上游分支到下游分支 (使用merge)
+ * 同步上游分支到下游分支 (使用 merge)
  */
 async function syncDownstream(
   sourceBranch: SupportedBranch,
   targetBranch: SupportedBranch,
   sourceVersion: string,
 ): Promise<BranchSyncResult> {
-  logger.info(`开始merge同步 ${sourceBranch} -> ${targetBranch}`);
+  logger.info(`开始 merge 同步 ${sourceBranch} -> ${targetBranch}`);
 
   try {
     // 切换到目标分支
@@ -560,19 +402,19 @@ async function syncDownstream(
 
     try {
       await execGit(['merge', sourceBranch, '--no-edit', '--no-ff', '-m', commitMessage]);
-      logger.info(`${sourceBranch} -> ${targetBranch} merge成功`);
+      logger.info(`${sourceBranch} -> ${targetBranch} merge 成功`);
     } catch {
-      logger.warning(`${sourceBranch} -> ${targetBranch} merge冲突，进行强制同步`);
+      logger.warning(`${sourceBranch} -> ${targetBranch} merge 冲突，进行强制同步`);
       await handleMergeConflict(sourceBranch, targetBranch, sourceVersion);
     }
 
     // 推送更改
     await execGit(['push', 'origin', targetBranch, '--force-with-lease']);
-    logger.info(`${targetBranch} 分支merge同步完成`);
+    logger.info(`${targetBranch} 分支 merge 同步完成`);
 
     return { success: true, version: sourceVersion };
   } catch (error) {
-    const errorMsg = `${sourceBranch} -> ${targetBranch} merge同步失败: ${error}`;
+    const errorMsg = `${sourceBranch} -> ${targetBranch} merge 同步失败: ${error}`;
     logger.error(errorMsg);
     return {
       success: false,
@@ -583,43 +425,43 @@ async function syncDownstream(
 }
 
 /**
- * 同步上游分支到下游分支 (使用rebase)
+ * 同步上游分支到下游分支 (使用 rebase)
  */
 async function syncDownstreamWithRebase(
   sourceBranch: SupportedBranch,
   targetBranch: SupportedBranch,
   sourceVersion: string,
 ): Promise<BranchSyncResult> {
-  logger.info(`开始rebase同步 ${sourceBranch} -> ${targetBranch}`);
+  logger.info(`开始 rebase 同步 ${sourceBranch} -> ${targetBranch}`);
 
   try {
     // 切换到目标分支
     await execGit(['fetch', 'origin', targetBranch]);
     await execGit(['switch', targetBranch]);
 
-    // 尝试rebase源分支
+    // 尝试 rebase 源分支
     try {
       await execGit(['rebase', sourceBranch]);
-      logger.info(`${sourceBranch} -> ${targetBranch} rebase成功`);
+      logger.info(`${sourceBranch} -> ${targetBranch} rebase 成功`);
     } catch {
-      logger.warning(`${sourceBranch} -> ${targetBranch} rebase冲突，尝试处理`);
+      logger.warning(`${sourceBranch} -> ${targetBranch} rebase 冲突，尝试处理`);
 
-      // 对于rebase冲突，我们采用更保守的策略
+      // 对于 rebase 冲突，我们采用更保守的策略
       await execGit(['rebase', '--abort']);
 
-      // 改用merge策略作为fallback
+      // 改用 merge 策略作为 fallback
       const commitMessage = getCommitMessage(sourceBranch, targetBranch, sourceVersion);
       await execGit(['merge', sourceBranch, '--no-edit', '--no-ff', '-m', commitMessage]);
-      logger.info(`rebase失败，改用merge策略完成同步`);
+      logger.info('rebase 失败，改用 merge 策略完成同步');
     }
 
     // 推送更改
     await execGit(['push', 'origin', targetBranch, '--force-with-lease']);
-    logger.info(`${targetBranch} 分支rebase同步完成`);
+    logger.info(`${targetBranch} 分支 rebase 同步完成`);
 
     return { success: true, version: sourceVersion };
   } catch (error) {
-    const errorMsg = `${sourceBranch} -> ${targetBranch} rebase同步失败: ${error}`;
+    const errorMsg = `${sourceBranch} -> ${targetBranch} rebase 同步失败: ${error}`;
     logger.error(errorMsg);
     return {
       success: false,
@@ -633,33 +475,33 @@ async function syncDownstreamWithRebase(
  * 执行分支同步 - 根据新的合并策略
  */
 export async function syncBranches(targetBranch: SupportedBranch, newVersion: string): Promise<BranchSyncResult[]> {
-  // 🔧 修复：只有在push事件时才检查自动同步提交，PR merge事件需要完整同步链
+  // 🔧 修复：只有在 push 事件时才检查自动同步提交，PR merge 事件需要完整同步链
   const isPushEvent = context.eventName === 'push';
   if (isPushEvent && isAutoSyncCommit()) {
-    logger.info('检测到Push事件的自动同步提交，跳过分支同步避免级联触发');
+    logger.info('检测到 Push 事件的自动同步提交，跳过分支同步避免级联触发');
     return [{ success: true }];
   }
 
   const results: BranchSyncResult[] = [];
 
   if (targetBranch === 'main') {
-    // Main分支更新后：使用rebase向下游Beta分支同步
-    logger.info('Main分支更新，使用rebase向Beta分支同步');
+    // Main 分支更新后：使用 rebase 向下游 Beta 分支同步
+    logger.info('Main 分支更新，使用 rebase 向 Beta 分支同步');
 
     const betaResult = await syncDownstreamWithRebase('main', 'beta', newVersion);
     results.push(betaResult);
 
     if (betaResult.success) {
-      // Beta分支同步成功后，继续向Alpha分支merge
-      logger.info('Main → Beta 同步成功，继续 Beta → Alpha merge同步');
+      // Beta 分支同步成功后，继续向 Alpha 分支 merge
+      logger.info('Main → Beta 同步成功，继续 Beta → Alpha merge 同步');
       const alphaResult = await syncDownstream('beta', 'alpha', newVersion);
       results.push(alphaResult);
     } else {
       logger.warning('Main → Beta 同步失败，跳过 Beta → Alpha 级联同步');
     }
   } else if (targetBranch === 'beta') {
-    // Beta分支更新后：使用merge向下游Alpha分支同步
-    logger.info('Beta分支更新，使用merge向Alpha分支同步');
+    // Beta 分支更新后：使用 merge 向下游 Alpha 分支同步
+    logger.info('Beta 分支更新，使用 merge 向 Alpha 分支同步');
     const result = await syncDownstream('beta', 'alpha', newVersion);
     results.push(result);
   }
@@ -668,175 +510,35 @@ export async function syncBranches(targetBranch: SupportedBranch, newVersion: st
   return results;
 }
 
-// ==================== NPM 发布功能 ====================
-
 /**
- * 检查是否启用npm发布
+ * 只创建标签（不更新版本文件）- 用于新的合并策略
  */
-function isNpmPublishEnabled(): boolean {
-  const enablePublish = core.getInput('enable-npm-publish')?.toLowerCase();
-  return enablePublish === 'true';
-}
-
-/**
- * 获取npm发布配置
- */
-function getNpmPublishConfig() {
-  const registry = core.getInput('npm-registry') || 'https://registry.npmjs.org/';
-  const token = core.getInput('npm-token');
-  const tag = core.getInput('npm-tag') || 'latest';
-  const access = core.getInput('npm-access') || 'public';
-
-  return { registry, token, tag, access };
-}
-
-/**
- * 配置npm认证
- */
-async function configureNpmAuth(registry: string, token: string): Promise<void> {
+export async function createTagOnly(version: string, targetBranch: SupportedBranch): Promise<void> {
   try {
-    // 设置registry
-    await exec('npm', ['config', 'set', 'registry', registry]);
-    logger.info(`配置npm registry: ${registry}`);
+    logger.info('开始创建版本标签...');
 
-    // 设置认证token
-    if (token) {
-      const registryUrl = new URL(registry);
-      const authKey = `//${registryUrl.host}/:_authToken`;
-      await exec('npm', ['config', 'set', authKey, token]);
-      logger.info('配置npm认证token');
-    }
+    const { targetVersion: fullVersion } = versionParse(version);
+
+    // 确保在正确的分支上
+    await execGit(['switch', targetBranch]);
+
+    // 创建版本标签
+    await execGit(['tag', fullVersion]);
+    logger.info(`已创建标签: ${fullVersion}`);
+
+    // 推送标签到远程
+    await execGit(['push', 'origin', fullVersion]);
+    logger.info(`✅ 标签 ${fullVersion} 推送成功`);
+
+    // 🚀 发布到 npm - 只对目标分支版本发布
+    await handleNpmPublish(version, targetBranch);
   } catch (error) {
-    throw new ActionError(`配置npm认证失败: ${error}`, 'configureNpmAuth', error);
+    throw new ActionError(`创建标签失败: ${error}`, 'createTagOnly', error);
   }
 }
 
 /**
- * 确定npm发布标签
- */
-function determineNpmTag(version: string, targetBranch: SupportedBranch, configTag: string): string {
-  // 如果用户指定了特定标签，使用用户指定的标签
-  if (configTag !== 'latest') {
-    return configTag;
-  }
-
-  // 根据分支和版本自动确定标签
-  if (targetBranch === 'main') {
-    // 主分支使用latest标签
-    return 'latest';
-  } else if (targetBranch === 'beta') {
-    // Beta分支使用beta标签
-    return 'beta';
-  } else if (targetBranch === 'alpha') {
-    // Alpha分支使用alpha标签
-    return 'alpha';
-  }
-
-  // 如果是预发布版本，根据prerelease标识确定标签
-  const cleanVersion = VersionUtils.cleanVersion(version);
-  const parsed = VersionUtils.parseVersion(cleanVersion);
-  if (parsed?.prerelease && parsed.prerelease.length > 0) {
-    const prereleaseId = parsed.prerelease[0] as string;
-    if (prereleaseId === 'alpha') return 'alpha';
-    if (prereleaseId === 'beta') return 'beta';
-  }
-
-  return 'latest';
-}
-
-/**
- * 执行npm发布
- */
-async function publishToNpm(
-  version: string,
-  targetBranch: SupportedBranch,
-  config: { registry: string; token: string; tag: string; access: string },
-): Promise<void> {
-  try {
-    // 确定发布标签
-    const publishTag = determineNpmTag(version, targetBranch, config.tag);
-
-    logger.info(`准备发布到npm: 版本=${version}, 标签=${publishTag}, 分支=${targetBranch}`);
-
-    // 配置npm认证
-    await configureNpmAuth(config.registry, config.token);
-
-    // 构建发布命令
-    const publishArgs = ['publish'];
-
-    // 添加访问权限
-    if (config.access) {
-      publishArgs.push('--access', config.access);
-    }
-
-    // 添加标签
-    publishArgs.push('--tag', publishTag);
-
-    // 执行发布
-    await exec('npm', publishArgs);
-
-    logger.info(`✅ 成功发布到npm: ${version} (标签: ${publishTag})`);
-
-    // 设置输出
-    core.setOutput('published-version', version);
-    core.setOutput('published-tag', publishTag);
-    core.setOutput('npm-registry', config.registry);
-  } catch (error) {
-    // 检查是否是版本已存在的错误
-    const errorMessage = String(error);
-    if (
-      errorMessage.includes('version already exists') ||
-      errorMessage.includes('You cannot publish over the previously published versions')
-    ) {
-      logger.warning(`版本 ${version} 已存在于npm registry，跳过发布`);
-      return;
-    }
-
-    throw new ActionError(`npm发布失败: ${error}`, 'publishToNpm', error);
-  }
-}
-
-/**
- * 处理npm发布逻辑 - 只对目标分支版本发布
- */
-export async function handleNpmPublish(version: string, targetBranch: SupportedBranch): Promise<void> {
-  if (!isNpmPublishEnabled()) {
-    logger.info('npm发布已禁用，跳过');
-    return;
-  }
-
-  try {
-    logger.info(`开始npm发布流程: 版本=${version}, 目标分支=${targetBranch}`);
-
-    const config = getNpmPublishConfig();
-
-    // 验证必需的配置
-    if (!config.token) {
-      throw new ActionError('npm-token未配置，无法发布到npm', 'handleNpmPublish');
-    }
-
-    // 只对目标分支的版本进行发布，不处理下游分支
-    await publishToNpm(version, targetBranch, config);
-
-    logger.info(`✅ ${targetBranch}分支版本 ${version} npm发布完成`);
-  } catch (error) {
-    // npm发布失败不应该中断整个流程
-    logger.error(`npm发布失败: ${error}`);
-    core.setOutput('npm-publish-failed', 'true');
-    core.setOutput('npm-publish-error', String(error));
-
-    // 如果用户要求严格模式，则抛出错误
-    const strictMode = core.getInput('npm-publish-strict')?.toLowerCase() === 'true';
-    if (strictMode) {
-      throw error;
-    }
-  }
-}
-
-// ==================== 版本更新和标签创建 ====================
-
-/**
- * 更新版本并创建标签 - 支持基于PR的CHANGELOG生成和npm发布
+ * 更新版本并创建标签 - 支持基于 PR 的 CHANGELOG 生成和 npm 发布
  */
 export async function updateVersionAndCreateTag(
   newVersion: string,
@@ -849,26 +551,25 @@ export async function updateVersionAndCreateTag(
     await execGit(['switch', targetBranch]);
 
     // 更新版本文件
-    const { updatePackageVersion } = await import('./version');
     await updatePackageVersion(newVersion);
 
     // 提交版本更改并推送
     await commitAndPushVersion(newVersion, targetBranch);
 
-    // 🎯 在打tag后更新 CHANGELOG - 使用PR信息
+    // 🎯 在打 tag 后更新 CHANGELOG - 使用 PR 信息
     await updateChangelog(pr, newVersion);
 
-    // 检查是否有 CHANGELOG 更改需要提交
-    const hasChanges = await hasFileChanges('CHANGELOG.md');
+    // 检查是否有 CHANGELOG 更改需要提交 - 每次版本发布都必须有 CHANGELOG 变更
+    const hasChanges = await hasChangelogChanges();
     if (hasChanges) {
-      const fullVersion = VersionUtils.addVersionPrefix(newVersion);
-      await commitAndPushFile('CHANGELOG.md', COMMIT_TEMPLATES.CHANGELOG_UPDATE(fullVersion), targetBranch);
-      logger.info('✅ CHANGELOG 更新已提交');
+      await commitChangelog(newVersion, targetBranch);
     } else {
-      logger.info('CHANGELOG 无更改，跳过提交');
+      const errorMessage = 'CHANGELOG 未生成任何内容，这不应该发生。请检查 PR 描述或提交历史是否包含足够的变更信息。';
+      logger.error(errorMessage);
+      throw new ActionError(errorMessage, 'CHANGELOG 生成失败');
     }
 
-    // 🚀 发布到npm - 只对目标分支版本发布
+    // 🚀 发布到 npm - 只对目标分支版本发布
     await handleNpmPublish(newVersion, targetBranch);
   } catch (error) {
     throw new ActionError(`版本更新和标签创建失败: ${error}`, 'updateVersionAndCreateTag', error);
