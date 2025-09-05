@@ -1,20 +1,40 @@
 {
-  "name": "@yuxu-palace/version-management-test",
-  "version": "1.1.0",
+  "name": "@yuxu-palace/yuheng-dispatch",
+  "version": "0.1.0-alpha.2",
   "type": "module",
-  "main": "./dist/index.cjs",
-  "files": [
-    "dist"
+  "description": "A GitHub Action for automatic package version patching with semantic versioning workflow",
+  "keywords": [
+    "github-action",
+    "semantic-versioning",
+    "version-management",
+    "npm-publishing",
+    "changelog-generation"
   ],
+  "author": "Yuxu-Palace",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Yuxu-Palace/yuheng-dispatch.git"
+  },
+  "homepage": "https://github.com/Yuxu-Palace/yuheng-dispatch#readme",
+  "bugs": {
+    "url": "https://github.com/Yuxu-Palace/yuheng-dispatch/issues"
+  },
+  "main": "./dist/index.cjs",
   "scripts": {
     "build": "tsup",
     "check": "biome check --write",
-    "format": "biome format --write"
+    "format": "biome format --write",
+    "prepare": "husky",
+    "buildAndCommit": "pnpm build && git add -A dist/",
+    "prepublishOnly": "echo \"Error, Do not publish as npm package\" | exit 1"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.1.3",
+    "@biomejs/biome": "2.2.2",
     "@types/node": "^22.17.0",
     "@types/semver": "^7.7.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.5",
     "tsup": "^8.5.0",
     "typescript": "^5.9.2"
   },

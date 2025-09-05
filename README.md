@@ -1,7 +1,7 @@
 # 版本管理 GitHub Action
 
-[![GitHub Release](https://img.shields.io/github/release/yuxu-palace/version-patch-action.svg)](https://github.com/yuxu-palace/version-patch-action/releases)
-[![GitHub License](https://img.shields.io/github/license/yuxu-palace/version-patch-action.svg)](https://github.com/yuxu-palace/version-patch-action/blob/main/LICENSE)
+[![GitHub Release](https://img.shields.io/github/release/Yuxu-Palace/yuheng-dispatch.svg)](https://github.com/Yuxu-Palace/yuheng-dispatch/releases)
+[![GitHub License](https://img.shields.io/github/license/Yuxu-Palace/yuheng-dispatch.svg)](https://github.com/Yuxu-Palace/yuheng-dispatch/blob/main/LICENSE)
 
 一个专门为语义化版本管理和自动化发布设计的 GitHub Action。支持 Alpha/Beta/Main 三级分支管理策略，提供智能版本推导、CHANGELOG 生成、npm 包发布等功能。
 
@@ -10,7 +10,7 @@
 - **🔄 三级分支管理**：支持 alpha → beta → main 分支策略
 - **🏷️ 智能版本推导**：基于 PR 标签和分支关系自动计算版本
 - **📦 npm 包发布**：支持自动发布到 npm registry，含标签管理
-- **📝 CHANGELOG 生成**：基于 conventional commits 自动生成变更日志
+- **📝 CHANGELOG 生成**：基于 PR 信息自动生成变更日志
 - **🔗 分支同步**：自动同步版本到下游分支，智能冲突解决
 - **💬 PR 评论**：实时预览版本变更，提供详细的版本信息
 
@@ -80,7 +80,7 @@ jobs:
           fetch-depth: 0
 
       - name: 版本管理
-        uses: yuxu-palace/version-patch-action@main
+        uses: Yuxu-Palace/yuheng-dispatch@main
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           
@@ -105,7 +105,7 @@ jobs:
 
 ```yaml
 - name: 版本管理
-  uses: yuxu-palace/version-patch-action@main
+  uses: Yuxu-Palace/yuheng-dispatch@main
   with:
     # ... 基础配置
     
@@ -255,7 +255,7 @@ Action 会在 PR 中自动创建评论，显示版本管理信息：
 
 ❌ **错误信息**
 
-Alpha分支只能在正式版本或Alpha版本后继续开发，当前最新版本: v1.0.0-beta.1 (beta)
+Alpha 分支只能在正式版本或 Alpha 版本后继续开发，当前最新版本: v1.0.0-beta.1 (beta)
 
 > 请确保在创建新功能之前，所有已有功能都已完成完整的发布流程（alpha → beta → main）。
 ```
@@ -397,18 +397,6 @@ graph TD
    npm token create --read-only=false --cidr-whitelist=""
    ```
 
-### 调试技巧
-
-启用详细日志：
-
-```yaml
-- name: 版本管理
-  uses: yuxu-palace/version-patch-action@main
-  with:
-    # ... 配置参数
-  env:
-    ACTIONS_STEP_DEBUG: true
-```
 
 ## 🏗️ 本地开发
 
@@ -450,4 +438,4 @@ MIT License - 详见 [LICENSE](LICENSE) 文件。
 
 ---
 
-如有问题，请在 [Issues](https://github.com/yuxu-palace/version-patch-action/issues) 中反馈。
+如有问题，请在 [Issues](https://github.com/Yuxu-Palace/yuheng-dispatch/issues) 中反馈。

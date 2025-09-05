@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+set -e
+# 运行 lint-staged 进行代码格式化和检查
+pnpm exec lint-staged
+
+# 运行构建命令并添加 dist 目录到暂存区
+pnpm buildAndCommit
